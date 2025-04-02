@@ -31,7 +31,7 @@ data <- fread("data.csv")
 str(data)
 
 View(data)
-any(is.na(training)) # 
+any(is.na(data)) # 
 colSums(is.na(data)) #
 
 sum(complete.cases(data))
@@ -57,4 +57,21 @@ colnames(data)[1:41] <- c(
   "h_sr_serror_rate", "h_rerror_rate", "h_sr_rerror_rate"
 )
 colnames(data)[42] <- "class"
+data.frame(names(data))
+
+View(data)
+
+data$class <- as.factor(data$class)
+unique(data$class)
+# print 10 rows of data if class = ""
+
+data[data$class == "", ] |> head(10)
+
+
+for (j in names(data)) {
+  if(is.numeric(data[[j]])) {
+    data[is.na(get(j)), (j) := median(data[[j]], na.rm = TRUE)]
+  }
+} # fucking median imputation values is done now 
+
 
