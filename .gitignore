@@ -7,3 +7,9 @@ data_cleaned_3.csv
 data_cleaned_4.csv
 data_cleaned_5.csv
 data_cleaned_6.csv
+.DS_Store
+.Rhistory
+.Rproj.user
+.RData
+.Ruserdata
+.Ruserdata/
