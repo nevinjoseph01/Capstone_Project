@@ -6,8 +6,8 @@
 | Research question   |  1   | All participation needed   |
 | Research Objectives   |  1   | All participation needed   |
 | Presentation   |  3   | Any takers?   |
-| Structure plan  |  0   | tasks coordination   |
-| Stuff 2   |  5   | no details   |
+| Structure plan  |  1   | tasks coordination   |
+| More PREPROCESSING steps   | 2   | Midani's task   |
 | Stuff 3   |  10   |  Hummus  |
 | Stuff 4   |  1   |  pasta  |
 
