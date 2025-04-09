@@ -6,7 +6,7 @@
 | Research question   |  1   | All participation needed   |
 | Research Objectives   |  1   | All participation needed   |
 | Presentation   |  3   | Any takers?   |
-| Stuff 1   |  0   | details   |
+| Structure plan  |  0   | tasks coordination   |
 | Stuff 2   |  5   | no details   |
 | Stuff 3   |  10   |  Hummus  |
 | Stuff 4   |  1   |  pasta  |
