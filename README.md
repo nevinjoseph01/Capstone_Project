@@ -23,6 +23,9 @@
 + how/what 2 visualize such a vast dataset?
 + regarding NAs, if the Class (targrt variable) is missing, can the sample be useful or should I delete each sample for with missing Class?
 + outliers removal or winsorizing?
++ if we shuffle for computational convenience, would it make it harder for us to visualize the data?
++ the difference between the columns is vast. Does Standardization count for scaling all 42 various features separately? 
+ 
 
 
 ## Already done:
