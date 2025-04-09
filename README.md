@@ -32,6 +32,8 @@
 
 ## Already done:
 + duplicated lines removed
++ vars factored
 + missing values imputed with median 
 + features are renamed properly
++ outliers_less var created (nrow: 173877 after duplicates removable)
 
