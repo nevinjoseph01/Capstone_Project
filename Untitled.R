@@ -70,8 +70,9 @@ data[data$class == "", ] |> head(10)
 
 for (j in names(data)) {
   if(is.numeric(data[[j]])) {
-    data[is.na(get(j)), (j) := median(data[[j]], na.rm = TRUE)]
-  }
-} # fucking median imputation values is done now 
+    data[is.na(get(j)), (j) := median(data[[j]], na.rm = TRUE)]}} # fucking median imputation values is done now 
 
+
+nrow(data)
+View(data)
 

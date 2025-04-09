@@ -21,7 +21,7 @@
 
 ## Questions:
 + how/what 2 visualize such a vast dataset?
-+ wagwan?
++ regarding NAs, if the Class (targrt variable) is missing, can the sample be useful or should I delete each sample for with missing Class?
 + 
 
 
