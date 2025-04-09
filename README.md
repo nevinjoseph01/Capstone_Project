@@ -1,5 +1,12 @@
 # Capstone_Project
 
+## Objective:
++ Create a machine learning model to correctly predict the class of the network data.
++ Use different preprocessing methods to clean, deduplicate and standardize the data.
++ Explore different types of feature selection algorithms, perform a comparative study to find the most effective feature selection algorithm.
++ Test the model with k-fold cross validation and check for any discrepancies.
+
+
 ## To do list:
 | 2-do | importance | details |
 | -------- | -------- | -------- |
