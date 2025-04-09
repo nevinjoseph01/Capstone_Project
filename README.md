@@ -28,6 +28,20 @@
 + the difference between the columns is vast. Does Standardization count for scaling all 42 various features separately? 
 + what if our feature selection remains unclear, and the var names are not understandable, and the figure representation of the feature is vague? Wagwan then?
 
+## Potential research Questions:
++ Are certain types of network traffic more commonly associated with anomalies or attacks? Exploring protocol, service, and flag distributions in relation to anomalies.
+
++ How do normal and anomalous connections differ in terms of volume and duration? Comparing bytes sent/received and connection times.
+
++ Do specific connection behaviors appear more frequently in anomalies? Looking at patterns like repeated login attempts or unusual connection flags.
+
++ Are there patterns in how network activity builds up before an anomaly occurs? Investigating features like connection count or repeated service usage.
+
++ Do host-based behaviors show early signs of risky or unusual activity? Analyzing metrics like access rate, host diversity, or repeated service targeting.
+
++ Can we identify distinct behavior profiles associated with different types of anomalies? Looking for clusters or patterns that map to known threat categories.
+
++ Are there silent or low-visibility behaviors that still represent a high level of risk? Studying low-volume, low-activity traffic that results in serious anomalies.
 
 
 ## Already done:
