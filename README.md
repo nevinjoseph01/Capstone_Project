@@ -20,6 +20,6 @@
 
 ## Already done:
 + duplicated lines removed
-+ missing values replaced with median 
++ missing values imputed with median 
 + features are renamed properly
 
