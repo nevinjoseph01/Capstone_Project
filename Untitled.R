@@ -1,6 +1,7 @@
 if (rstudioapi::isAvailable()) {
-  setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
-}
+  setwd(dirname(rstudioapi::getActiveDocumentContext()$path))}
+
+options(width = 200)
 
 # Load libraries ---------------------------------------------------------------
 # Create our function "using()" 
