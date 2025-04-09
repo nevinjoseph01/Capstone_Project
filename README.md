@@ -25,7 +25,7 @@
 + outliers removal or winsorizing?
 + if we shuffle for computational convenience, would it make it harder for us to visualize the data?
 + the difference between the columns is vast. Does Standardization count for scaling all 42 various features separately? 
- 
++ what if our feature selection remains unclear, and the var names are not understandable, and the figure representation of the feature is vague? Wagwan then?
 
 
 ## Already done:
