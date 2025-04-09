@@ -8,8 +8,8 @@
 | Presentation   |  3   | Any takers?   |
 | Structure plan  |  1   | tasks coordination   |
 | More PREPROCESSING steps   | 2   | Midani's task   |
-| Stuff 3   |  10   |  Hummus  |
-| Stuff 4   |  1   |  pasta  |
+| Stuff 3   |  10   |  NA  |
+| Stuff 4   |  10  |  NA  |
 
 
 ## Already done:
