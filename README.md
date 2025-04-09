@@ -12,12 +12,14 @@
 | Stuff 4   |  10  |  NA  |
 
 
+## Questions:
++ how/what 2 visualize such a vast dataset?
++ wagwan?
++ 
+
+
 ## Already done:
 + duplicated lines removed
 + missing values replaced with median 
 + features are renamed properly
 
-
-## Questions:
-+ how/what 2 visualize such a vast dataset?
-+ wagwan?
