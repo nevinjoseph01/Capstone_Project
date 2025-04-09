@@ -22,7 +22,7 @@
 ## Questions:
 + how/what 2 visualize such a vast dataset?
 + regarding NAs, if the Class (targrt variable) is missing, can the sample be useful or should I delete each sample for with missing Class?
-+ 
++ outliers removal or winsorizing?
 
 
 ## Already done:
