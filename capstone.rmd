@@ -70,14 +70,7 @@ nrow(data)
 
 ```
 
-
-
-# checking for duplicates:
-sum(duplicated(data))
-nrow(data) - sum(duplicated(data))# 399668
-#remove duplicates
-data <- data[!duplicated(data), ]
-
+```{r}
 colnames(data)[1:42] <- c(
   "duration", "protocol_type", "service", "flag", "src_bytes", "dst_bytes",
   "land", "wrong_fragt", "urgent", "hot", "num_fail_login", "logged_in",
@@ -89,11 +82,26 @@ colnames(data)[1:42] <- c(
   "h_diff_srv_rate", "h_src_port_rate", "h_srv_d_h_rate", "h_serror_rate",
   "h_sr_serror_rate", "h_rerror_rate", "h_sr_rerror_rate","class"
 )
+
+```
+```{r}
+# checking for duplicates:
+sum(duplicated(data))
+nrow(data) - sum(duplicated(data))# 399668
+#remove duplicates
+data <- data[!duplicated(data), ]
+
+```
+```{r}
+
 #colnames(data)[42] <- "class"
 data.frame(names(data))
 
 View(data)
 
+```
+
+```{r}
 data$class <- as.factor(data$class)
 data$protocol_type <- as.factor(data$protocol_type)
 data$service <- as.factor(data$service)
@@ -104,7 +112,9 @@ data[data$class == "", ] |> head(10)
 
 data <- data[data$class != '']
 
+```
 
+```{r}
 
 #imputing:
 for (j in names(data)) {
@@ -113,6 +123,9 @@ for (j in names(data)) {
 
 nrow(data)
 View(data)
+```
+
+```{r}
 
 
 # removing outliers:
@@ -131,21 +144,63 @@ for(i in numeric_cols) {
 
 nrow(training_without_outliers)/nrow(data)
 # 0.4350536
+```
+```{r}
+# Count empty cells in each column
+empty_cells <- sapply(data, function(x) sum(x == ""))
+View(as.data.frame(empty_cells))
+
+
+```
+```{r}
+
+
+# Calculate percentage of empty cells in each column
+empty_cells_percentage <- (empty_cells / nrow(data)) * 100
+print(empty_cells_percentage)
+View(as.data.frame(empty_cells_percentage))
+
+```
+```{r}
+
+# Create a data frame for better visualization
+empty_cells_df <- data.frame(
+  Column = names(empty_cells),
+  Empty_Cells = empty_cells,
+  Percentage = empty_cells_percentage
+)
+print(empty_cells_df)
+
+
+```
+```{r}
+
+# Sort by percentage of empty cells
+empty_cells_df <- empty_cells_df[order(-empty_cells_df$Percentage), ]
+print(empty_cells_df)
+
+
+```
+```{r}
+
+
+```
+```{r}
+
+
+```
 
 
 
 
 
-# nrow of the original data with duplicates
-nrow(fread("data.csv"))
-# 528603
 
-# nrow of the original data without duplicates
-nrow(data)
-# 399668
 
-nrow(training_without_outliers)
-# 173877
+
+
+
+
+
 
 
 
