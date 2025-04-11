@@ -65,7 +65,12 @@ data$protocol_type <- as.factor(data$protocol_type)
 data$service <- as.factor(data$service)
 data$flag <- as.factor(data$flag)
 
+
 data[data$class == "", ] |> head(10)
+
+data <- data[data$class != '']
+
+
 
 #imputing:
 for (j in names(data)) {
