@@ -1,3 +1,20 @@
+---
+title: "Decision Trees Assignment"
+author: "Abed, Nevin, and Heshan"
+date: "2025-04-09"
+output:
+  html_document:
+    code_folding: hide
+    number_sections: false
+    toc: true
+    toc_depth: 3
+    theme: cosmo
+    toc_float: true
+---
+
+
+```{r setup, include=FALSE}
+
 if (rstudioapi::isAvailable()) {
   setwd(dirname(rstudioapi::getActiveDocumentContext()$path))}
 
@@ -24,19 +41,36 @@ using("imbalance") # Oversampling
 using("ROSE") # Synthetic generation of new data to rebalance
 using("VIM")
 
+```
 
 
+
+```{r data}
 data <- fread("data.csv")
 str(data)
 
+```
+
+
+```{r}
 View(data)
 any(is.na(data)) # 
 colSums(is.na(data)) #
+
+```
+
+
+
+```{r}
 
 sum(complete.cases(data))
 # 22469
 nrow(data)
 # 528603
+
+```
+
+
 
 # checking for duplicates:
 sum(duplicated(data))
@@ -113,25 +147,6 @@ nrow(data)
 nrow(training_without_outliers)
 # 173877
 
-# Count empty cells in each column
-empty_cells <- sapply(data, function(x) sum(x == ""))
-View(as.data.frame(empty_cells))
 
-# Calculate percentage of empty cells in each column
-empty_cells_percentage <- (empty_cells / nrow(data)) * 100
-print(empty_cells_percentage)
-View(as.data.frame(empty_cells_percentage))
-
-# Create a data frame for better visualization
-empty_cells_df <- data.frame(
-  Column = names(empty_cells),
-  Empty_Cells = empty_cells,
-  Percentage = empty_cells_percentage
-)
-print(empty_cells_df)
-
-# Sort by percentage of empty cells
-empty_cells_df <- empty_cells_df[order(-empty_cells_df$Percentage), ]
-print(empty_cells_df)
 
 
