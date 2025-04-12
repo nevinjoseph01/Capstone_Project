@@ -35,7 +35,6 @@ using("data.table") # The data manipulation king
 using("caret") # The ML swiss-knife - http://topepo.github.io/caret/available-models.html
 using("plotly") # Beautiful interactive plots
 using("ranger") # the fastest and better random forest implementation
-using("adabag") # Adaboost.    
 using("xgboost") # Extreme Gradient boosting
 using("imbalance") # Oversampling
 using("ROSE") # Synthetic generation of new data to rebalance
@@ -44,29 +43,17 @@ using("VIM")
 ```
 
 
-
 ```{r data}
 data <- fread("data.csv")
+
+```
+
+
+
+```{r}
 str(data)
-
-```
-
-
-```{r}
 View(data)
-any(is.na(data)) # 
-colSums(is.na(data)) #
 
-```
-
-
-
-```{r}
-
-sum(complete.cases(data))
-# 22469
-nrow(data)
-# 528603
 
 ```
 
@@ -85,19 +72,30 @@ colnames(data)[1:42] <- c(
 
 ```
 ```{r}
+as.data.frame(table(data$class))
+```
+```{r}
+any(is.na(data)) # 
+colSums(is.na(data)) #
+sum(complete.cases(data))
+# 22469
+nrow(data)
+# 528603
+
+```
+
+
+```{r}
 # checking for duplicates:
-sum(duplicated(data))
-nrow(data) - sum(duplicated(data))# 399668
+#sum(duplicated(data)) # 128935
+#nrow(data) - sum(duplicated(data))# 399668
 #remove duplicates
 data <- data[!duplicated(data), ]
 
 ```
 ```{r}
 
-#colnames(data)[42] <- "class"
-data.frame(names(data))
-
-View(data)
+#data.frame(names(data))
 
 ```
 
@@ -108,11 +106,17 @@ data$service <- as.factor(data$service)
 data$flag <- as.factor(data$flag)
 
 
-data[data$class == "", ] |> head(10)
 
-data <- data[data$class != '']
 
 ```
+
+Finding no usefullness to samples with empty class, we decided remove them.
+```{r}
+data[data$class == "", ] |> head(10)
+nrow(data[data$class == "", ]) # 36061
+data <- data[data$class != '']
+```
+
 
 ```{r}
 
@@ -121,13 +125,14 @@ for (j in names(data)) {
   if(is.numeric(data[[j]])) {
     data[is.na(get(j)), (j) := median(data[[j]], na.rm = TRUE)]}} # fucking median imputation values is done now 
 
-nrow(data)
-View(data)
+nrow(data) # 399668 after removing duplicates
+#View(data)
 ```
 
-```{r}
-
-
+Removing outliers:
+Can't remove it right now because the target detection is not binary, but about 26 classes.
+The following chunk is disabled for "run above" button
+```{r, include=FALSE}
 # removing outliers:
 training_without_outliers <- copy(data)
 numeric_cols <- names(data)[sapply(data, is.numeric)]
@@ -145,25 +150,53 @@ for(i in numeric_cols) {
 nrow(training_without_outliers)/nrow(data)
 # 0.4350536
 ```
+
+
+
+Handling missing char/factor values:
 ```{r}
 # Count empty cells in each column
 empty_cells <- sapply(data, function(x) sum(x == ""))
 View(as.data.frame(empty_cells))
-
-
 ```
+
+
+
+
+Checking for overlaping values:
+
 ```{r}
+# Count rows with missing values in each combination of factors
+missing_protocol <- data$protocol_type == ""
+missing_service <- data$service == ""
+missing_flag <- data$flag == ""
+
+# Check total rows with at least one missing value
+total_missing_rows <- sum(missing_protocol | missing_service | missing_flag)
+
+# Check overlaps
+protocol_service_overlap <- sum(missing_protocol & missing_service)
+protocol_flag_overlap <- sum(missing_protocol & missing_flag)
+service_flag_overlap <- sum(missing_service & missing_flag)
+all_three_missing <- sum(missing_protocol & missing_service & missing_flag)
+percent_affected <- (total_missing_rows / nrow(data)) * 100
+```
+
+Since removing ~25% of our data would be a substantial loss of information, AI recommends a combined approach:
+
+Analyze the patterns of missingness: Check if the missing values are related to specific classes or patterns in the data. This might give insight into whether the missing data is Missing at Random (MAR) or Missing Not at Random (MNAR).
+Mode imputation for rows with a single missing value: For rows where only one of the three variables is missing, use mode imputation.
+Consider removal for rows with multiple missing values: For rows where two or all three variables are missing (which appears to be a much smaller subset), consider removal if those patterns don't conform to an identifiable subset of your data.
 
 
-# Calculate percentage of empty cells in each column
+
+
+Checking percentages of missing chars in each feature:
+```{r}
 empty_cells_percentage <- (empty_cells / nrow(data)) * 100
-print(empty_cells_percentage)
-View(as.data.frame(empty_cells_percentage))
+#print(empty_cells_percentage)
+#View(as.data.frame(empty_cells_percentage))
 
-```
-```{r}
-
-# Create a data frame for better visualization
 empty_cells_df <- data.frame(
   Column = names(empty_cells),
   Empty_Cells = empty_cells,
@@ -181,25 +214,63 @@ print(empty_cells_df)
 
 
 ```
+
+
 ```{r}
+length(unique(data$flag))
+length(unique(data$service))
+length(unique(data$protocol_type))
+```
+> length(unique(data$flag))
+[1] 13
+> length(unique(data$service))
+[1] 68
+> length(unique(data$protocol_type))
+[1] 5
+
+
+```{r}
+# Create a table of unique values for each feature
+unique_values <- sapply(data, function(x) length(unique(x)))
+unique_values_df <- data.frame(
+  Feature = names(unique_values),
+  Unique_Values = unique_values)
+
+# Sort by number of unique values
+unique_values_df <- unique_values_df[order(-unique_values_df$Unique_Values), ]
+
+# Print the table
+print(unique_values_df)
+
+# View in a more readable format
+View(unique_values_df)
+```
+
+
+
+
+This shit aint working
+```{r, include=FALSE}}
+
+using("rpart")
+using("rpart.plot")  # for plotting the tree
+using("caret")
+
+# Fit the decision tree model
+set.seed(42)
+tree_model <- rpart(class ~ ., data = data, method = "class", control = rpart.control(cp = 0.01))
+
+# Visualize the tree
+rpart.plot(tree_model, extra = 104, fallen.leaves = TRUE)
+
+# Predict on the same data (quick check)
+pred <- predict(tree_model, data, type = "class")
+
+# Evaluate performance
+confusionMatrix(pred, data$class)
 
 
 ```
-```{r}
-
-
-```
-
-
-
-
-
-
-
-
-
-
-
 
 
 

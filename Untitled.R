@@ -29,6 +29,9 @@ using("VIM")
 data <- fread("data.csv")
 str(data)
 
+
+View(as.data.frame(table(data$class)))
+
 View(data)
 any(is.na(data)) # 
 colSums(is.na(data)) #
