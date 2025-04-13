@@ -246,164 +246,360 @@ print(unique_values_df)
 View(unique_values_df)
 ```
 
+```{r}
 
+```
+
+## Creating Two Sets for Handling Missing Categorical Values
+
+### Dataset 1: Mode Imputation for Empty Character/Factor Values
+
+```{r}
+# Create a copy of the original data
+data_mode_imputed <- copy(data)
+
+# Calculate modes for categorical variables with empty values
+protocol_mode <- names(sort(table(data$protocol_type[data$protocol_type != ""]), decreasing = TRUE))[1]
+service_mode <- names(sort(table(data$service[data$service != ""]), decreasing = TRUE))[1]
+flag_mode <- names(sort(table(data$flag[data$flag != ""]), decreasing = TRUE))[1]
+
+# Display the modes
+cat("Mode values for imputation:\n")
+cat("Protocol type mode:", protocol_mode, "\n")
+cat("Service mode:", service_mode, "\n")
+cat("Flag mode:", flag_mode, "\n")
+
+# Impute empty values with modes
+data_mode_imputed[protocol_type == "", protocol_type := protocol_mode]
+data_mode_imputed[service == "", service := service_mode]
+data_mode_imputed[flag == "", flag := flag_mode]
+
+# Verify that imputation worked
+cat("\nVerifying imputation - count of empty values after imputation:\n")
+cat("Protocol type:", sum(data_mode_imputed$protocol_type == ""), "\n")
+cat("Service:", sum(data_mode_imputed$service == ""), "\n")
+cat("Flag:", sum(data_mode_imputed$flag == ""), "\n")
+
+cat("\nRows in mode-imputed dataset:", nrow(data_mode_imputed), "\n")
+```
+
+### Dataset 2: Removal of Rows with Empty Character/Factor Values
+
+```{r}
+# Create a dataset with rows removed where any of the categorical features have empty values
+data_removed <- data[protocol_type != "" & service != "" & flag != "", ]
+
+# Check the number of rows removed
+cat("Original dataset rows:", nrow(data), "\n")
+cat("Rows after removal:", nrow(data_removed), "\n")
+cat("Percentage of data retained:", round(nrow(data_removed)/nrow(data) * 100, 2), "%\n")
+```
+
+## Addressing Multi-Class Classification and Potential Overfitting
+
+```{r}
+# Check class distribution
+class_counts <- table(data$class)
+n_classes <- length(class_counts)
+
+cat("Number of classes:", n_classes, "\n")
+cat("Class distribution (top 10):\n")
+print(sort(class_counts, decreasing = TRUE)[1:10])
+
+# Calculate class imbalance metrics
+max_class_pct <- max(class_counts) / sum(class_counts) * 100
+min_class_pct <- min(class_counts) / sum(class_counts) * 100
+
+cat("\nClass imbalance metrics:\n")
+cat("Most common class: ", round(max_class_pct, 2), "% of data\n", sep="")
+cat("Least common class: ", round(min_class_pct, 4), "% of data\n", sep="")
+cat("Ratio between most and least common: ", round(max(class_counts)/min(class_counts), 2), "\n", sep="")
+```
+
+## Discussion on Model Selection and Overfitting
+
+Random Forest is indeed appropriate for multi-class classification problems, but the extremely high accuracy (0.994/0.999) suggests potential issues:
+
+1. **Data leakage**: Some features might directly reveal the class label
+2. **Overfitting**: The model could be memorizing the training data rather than learning generalizable patterns
+3. **Class imbalance**: High accuracy might be achieved by simply predicting the majority class
+4. **Data redundancy**: Despite removing duplicates, highly correlated features might exist
+
+Recommended next steps:
+
+```{r, eval=FALSE}
+# Suggestions for addressing potential overfitting:
+
+# 1. Feature importance analysis to identify potential data leakage
+# Already implemented in your current code
+
+# 2. Learning curves to diagnose overfitting
+# You might add code like:
+# plot_learning_curve <- function(...)
+
+# 3. Confusion matrix analysis by class
+# Already implemented in your code
+
+# 4. Try simpler models first
+# For example, decision trees or logistic regression
+
+# 5. Consider stratified sampling for class imbalance
+# trainIndex <- createDataPartition(data$class, p=0.7, list=FALSE, times=1)
+```
 
 Random Forest Model + Comparing Training vs Testing
 
 ```{r, include=FALSE}}
-
-# Split data into training and testing sets
+# First model: Using mode-imputed data
 set.seed(42)
-train_index <- createDataPartition(data$class, p = 0.7, list = FALSE)
-train_data <- data[train_index]
-test_data <- data[-train_index]
+train_index_imputed <- createDataPartition(data_mode_imputed$class, p = 0.7, list = FALSE)
+train_data_imputed <- data_mode_imputed[train_index_imputed]
+test_data_imputed <- data_mode_imputed[-train_index_imputed]
 
-# Train Random Forest model with ranger
-model_rf <- ranger(
+# Train Random Forest on imputed data
+model_rf_imputed <- ranger(
   class ~ ., 
-  data = train_data,
-  importance = 'impurity',  # For feature importance
-  num.trees = 100,          # Start with fewer trees for speed
-  mtry = floor(sqrt(ncol(data) - 1)), # Default RF formula
-  min.node.size = 5,        # Smaller for better precision
-  verbose = TRUE            # Track progress
+  data = train_data_imputed,
+  importance = 'impurity',
+  num.trees = 100,
+  mtry = floor(sqrt(ncol(data_mode_imputed) - 1)),
+  min.node.size = 5,
+  verbose = TRUE
 )
 
-# Making predictions
-pred_rf <- predict(model_rf, data = test_data)
+# Predict on imputed test data
+pred_rf_imputed <- predict(model_rf_imputed, data = test_data_imputed)
+table_result_imputed <- table(Predicted = pred_rf_imputed$predictions, Actual = test_data_imputed$class)
+accuracy_imputed <- sum(diag(table_result_imputed)) / sum(table_result_imputed)
 
-
-# NOTE: I GET ERROR IN CONFUSION MATRIX
-# DOESNT WORK: Error in `[.default`(data, , pos) : subscript out of bounds
-# confusionMatrix(pred_rf$predictions, test_data$class)
-
-
-#SO WE USE THIS INSTEAD!
-# Alternative method to evaluate predictions
-table_result <- table(Predicted = pred_rf$predictions, Actual = test_data$class)
-print(table_result)
-
-# Calculate accuracy manually
-# Predict on training data
-train_pred_rf <- predict(model_rf, data = train_data)
-
-# Create confusion matrix for training data
-train_table_result <- table(Predicted = train_pred_rf$predictions, Actual = train_data$class)
-
-# Calculate training accuracy manually
-train_accuracy <- sum(diag(train_table_result)) / sum(train_table_result)
-
-
-# Compare training and testing accuracy
-print(paste("Training Accuracy:", round(train_accuracy, 4)))
-print(paste("Testing Accuracy:", round(accuracy, 4)))
-
-# Get feature importance
-importance_df <- data.frame(
-  Feature = names(model_rf$variable.importance),
-  Importance = model_rf$variable.importance
+# Get feature importance for imputed model
+importance_df_imputed <- data.frame(
+  Feature = names(model_rf_imputed$variable.importance),
+  Importance = model_rf_imputed$variable.importance
 )
-importance_df <- importance_df[order(-importance_df$Importance), ]
-head(importance_df, 10)  # Show top 10 features
+importance_df_imputed <- importance_df_imputed[order(-importance_df_imputed$Importance), ]
+
+# Second model: Using data with rows removed
+set.seed(42)
+train_index_removed <- createDataPartition(data_removed$class, p = 0.7, list = FALSE)
+train_data_removed <- data_removed[train_index_removed]
+test_data_removed <- data_removed[-train_index_removed]
+
+# Train Random Forest on data with rows removed
+model_rf_removed <- ranger(
+  class ~ ., 
+  data = train_data_removed,
+  importance = 'impurity',
+  num.trees = 100,
+  mtry = floor(sqrt(ncol(data_removed) - 1)),
+  min.node.size = 5,
+  verbose = TRUE
+)
+
+# Predict on test data with rows removed
+pred_rf_removed <- predict(model_rf_removed, data = test_data_removed)
+table_result_removed <- table(Predicted = pred_rf_removed$predictions, Actual = test_data_removed$class)
+accuracy_removed <- sum(diag(table_result_removed)) / sum(table_result_removed)
+
+# Get feature importance for removed-rows model
+importance_df_removed <- data.frame(
+  Feature = names(model_rf_removed$variable.importance),
+  Importance = model_rf_removed$variable.importance
+)
+importance_df_removed <- importance_df_removed[order(-importance_df_removed$Importance), ]
+
+# Compare the results
+cat("Accuracy with mode imputation:", accuracy_imputed, "\n")
+cat("Accuracy with rows removed:", accuracy_removed, "\n")
+
+# Compare top 10 important features from both approaches
+top_features_comparison <- data.frame(
+  Rank = 1:10,
+  Imputed_Feature = importance_df_imputed$Feature[1:10],
+  Imputed_Importance = importance_df_imputed$Importance[1:10],
+  Removed_Feature = importance_df_removed$Feature[1:10],
+  Removed_Importance = importance_df_removed$Importance[1:10]
+)
+print(top_features_comparison)
+
+# Original model for reference
+# Split data into training and testing sets
+# set.seed(42)
+# train_index <- createDataPartition(data$class, p = 0.7, list = FALSE)
+# train_data <- data[train_index]
+# test_data <- data[-train_index]
+
+# # Train Random Forest model with ranger
+# model_rf <- ranger(
+#   class ~ ., 
+#   data = train_data,
+#   importance = 'impurity',  # For feature importance
+#   num.trees = 100,          # Start with fewer trees for speed
+#   mtry = floor(sqrt(ncol(data) - 1)), # Default RF formula
+#   min.node.size = 5,        # Smaller for better precision
+#   verbose = TRUE            # Track progress
+# )
+
+# # Making predictions
+# pred_rf <- predict(model_rf, data = test_data)
 
 
+# # NOTE: I GET ERROR IN CONFUSION MATRIX
+# # DOESNT WORK: Error in `[.default`(data, , pos) : subscript out of bounds
+# # confusionMatrix(pred_rf$predictions, test_data$class)
+
+
+# #SO WE USE THIS INSTEAD!
+# # Alternative method to evaluate predictions
+# table_result <- table(Predicted = pred_rf$predictions, Actual = test_data$class)
+# print(table_result)
+
+# # Calculate accuracy manually
+# # Predict on training data
+# train_pred_rf <- predict(model_rf, data = train_data)
+
+# # Create confusion matrix for training data
+# train_table_result <- table(Predicted = train_pred_rf$predictions, Actual = train_data$class)
+
+# # Calculate training accuracy manually
+# train_accuracy <- sum(diag(train_table_result)) / sum(train_table_result)
+
+
+# # Compare training and testing accuracy
+# print(paste("Training Accuracy:", round(train_accuracy, 4)))
+# print(paste("Testing Accuracy:", round(accuracy, 4)))
+
+# # Get feature importance
+# importance_df <- data.frame(
+#   Feature = names(model_rf$variable.importance),
+#   Importance = model_rf$variable.importance
+# )
+# importance_df <- importance_df[order(-importance_df$Importance), ]
+# head(importance_df, 10)  # Show top 10 features
 
 ```
-Accuracy on testing 0.9993"
 
-
-
-
-Metric Table
+## Comparison of Model Performance: Imputed vs. Removed
 
 ```{r}
-# Calculate per-class precision, recall, and F1 score
-metrics_by_class <- data.frame(
-  Class = colnames(table_result),
-  Precision = diag(table_result) / colSums(table_result),
-  Recall = diag(table_result) / rowSums(table_result),
-  Support = rowSums(table_result)
+# Create a comparison table of the two approaches
+performance_comparison <- data.frame(
+  Metric = c("Dataset Size", "Accuracy", "Top Feature"),
+  Imputed_Data = c(nrow(data_mode_imputed), 
+                   round(accuracy_imputed, 4), 
+                   as.character(importance_df_imputed$Feature[1])),
+  Removed_Data = c(nrow(data_removed), 
+                  round(accuracy_removed, 4), 
+                  as.character(importance_df_removed$Feature[1]))
 )
 
-# Add F1 score
-metrics_by_class$F1 <- 2 * (metrics_by_class$Precision * metrics_by_class$Recall) / 
-                        (metrics_by_class$Precision + metrics_by_class$Recall)
+# Print the comparison
+print(performance_comparison)
 
-# Replace NaN values with 0
-metrics_by_class[is.na(metrics_by_class)] <- 0
+# Compare class distributions in both datasets
+class_dist_imputed <- prop.table(table(data_mode_imputed$class)) * 100
+class_dist_removed <- prop.table(table(data_removed$class)) * 100
 
-# Print the metrics
-print(metrics_by_class[order(-metrics_by_class$Support),])
+# Get top 5 classes
+top_classes <- names(sort(table(data$class), decreasing = TRUE)[1:5])
 
-# Calculate macro averages
-macro_avg <- data.frame(
-  Class = "macro_avg",
-  Precision = mean(metrics_by_class$Precision, na.rm = TRUE),
-  Recall = mean(metrics_by_class$Recall, na.rm = TRUE),
-  Support = sum(metrics_by_class$Support),
-  F1 = mean(metrics_by_class$F1, na.rm = TRUE)
+class_dist_comparison <- data.frame(
+  Class = top_classes,
+  Imputed_Pct = round(class_dist_imputed[top_classes], 2),
+  Removed_Pct = round(class_dist_removed[top_classes], 2),
+  Difference = round(class_dist_imputed[top_classes] - class_dist_removed[top_classes], 2)
 )
 
-# Weighted average (weight by support)
-weighted_avg <- data.frame(
-  Class = "weighted_avg",
-  Precision = sum(metrics_by_class$Precision * metrics_by_class$Support, na.rm = TRUE) / 
-              sum(metrics_by_class$Support, na.rm = TRUE),
-  Recall = sum(metrics_by_class$Recall * metrics_by_class$Support, na.rm = TRUE) / 
-           sum(metrics_by_class$Support, na.rm = TRUE),
-  Support = sum(metrics_by_class$Support),
-  F1 = sum(metrics_by_class$F1 * metrics_by_class$Support, na.rm = TRUE) / 
-        sum(metrics_by_class$Support, na.rm = TRUE)
-)
-
-# Combine all metrics
-all_metrics <- rbind(metrics_by_class, macro_avg, weighted_avg)
-print(all_metrics)
-
-# Visualize feature importance
-using("ggplot2")
-ggplot(importance_df[1:20,], aes(x = reorder(Feature, Importance), y = Importance)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  coord_flip() +
-  theme_minimal() +
-  labs(title = "Top 20 Features by Importance", 
-       x = "Features", 
-       y = "Importance Score")
-
+print(class_dist_comparison)
 ```
 
+## Evaluation of Random Forest for Multi-Class Classification
 
-k-fold cross validation
+For a 25-category classification problem, Random Forest is generally a good choice because:
+
+1. It naturally handles multi-class problems without requiring one-vs-all transformations
+2. It can capture complex, non-linear relationships between features
+3. It provides feature importance measures
+4. It's robust to irrelevant features
+
+However, the extremely high accuracy (0.99+) in both training and testing suggests potential issues:
+
+1. **Data leakage**: Some features might be too predictive, implying information leakage
+2. **Class imbalance**: Very high accuracy might come from predicting dominant classes well
+3. **Overfitting**: The model might be capturing noise or memorizing patterns specific to this dataset
+
+## K-fold Cross-Validation with Both Datasets
 
 ```{r}
-# K-fold cross-validation
+# K-fold cross-validation for mode-imputed data
 k <- 5
-folds <- createFolds(data$class, k = k)
-cv_results <- data.frame()
+folds_imputed <- createFolds(data_mode_imputed$class, k = k)
+cv_results_imputed <- data.frame()
 
 for (i in 1:k) {
   # Split data
-  test_indices <- folds[[i]]
-  cv_train <- data[-test_indices]
-  cv_test <- data[test_indices]
+  test_indices <- folds_imputed[[i]]
+  cv_train <- data_mode_imputed[-test_indices]
+  cv_test <- data_mode_imputed[test_indices]
   
-  # Train model
-  cv_model <- ranger(class ~ ., data = cv_train, num.trees = 100)
+  # Train model (with fewer trees for speed)
+  cv_model <- ranger(class ~ ., data = cv_train, num.trees = 50)
   
   # Predict
   cv_pred <- predict(cv_model, data = cv_test)
   cv_acc <- sum(cv_pred$predictions == cv_test$class) / nrow(cv_test)
   
   # Store results
-  cv_results <- rbind(cv_results, data.frame(Fold = i, Accuracy = cv_acc))
+  cv_results_imputed <- rbind(cv_results_imputed, data.frame(Fold = i, Accuracy = cv_acc))
 }
 
-# Calculate mean and standard deviation
-mean_acc <- mean(cv_results$Accuracy)
-sd_acc <- sd(cv_results$Accuracy)
-print(paste("Mean CV Accuracy:", round(mean_acc, 4), "±", round(sd_acc, 4)))
+# Calculate mean and standard deviation for imputed data
+mean_acc_imputed <- mean(cv_results_imputed$Accuracy)
+sd_acc_imputed <- sd(cv_results_imputed$Accuracy)
 
+# K-fold cross-validation for removed-rows data
+folds_removed <- createFolds(data_removed$class, k = k)
+cv_results_removed <- data.frame()
+
+for (i in 1:k) {
+  # Split data
+  test_indices <- folds_removed[[i]]
+  cv_train <- data_removed[-test_indices]
+  cv_test <- data_removed[test_indices]
+  
+  # Train model (with fewer trees for speed)
+  cv_model <- ranger(class ~ ., data = cv_train, num.trees = 50)
+  
+  # Predict
+  cv_pred <- predict(cv_model, data = cv_test)
+  cv_acc <- sum(cv_pred$predictions == cv_test$class) / nrow(cv_test)
+  
+  # Store results
+  cv_results_removed <- rbind(cv_results_removed, data.frame(Fold = i, Accuracy = cv_acc))
+}
+
+# Calculate mean and standard deviation for removed-rows data
+mean_acc_removed <- mean(cv_results_removed$Accuracy)
+sd_acc_removed <- sd(cv_results_removed$Accuracy)
+
+# Compare cross-validation results
+cv_comparison <- data.frame(
+  Dataset = c("Mode Imputed", "Rows Removed"),
+  Mean_Accuracy = c(mean_acc_imputed, mean_acc_removed),
+  Std_Deviation = c(sd_acc_imputed, sd_acc_removed)
+)
+
+print(cv_comparison)
 ```
 
-We got 0.999 both on training/testing AND on the validation, which is incredibly good
+## Discussion and Next Steps
+
+Based on the research questions in the README and the results of our analysis, here are some recommendations:
+
+1. **Feature engineering**: Create new features that might better capture attack patterns
+2. **Dimensionality reduction**: Consider PCA or feature selection to reduce redundancy
+3. **Class rebalancing**: Try SMOTE or other techniques for the minority classes
+4. **Different model architectures**: Try gradient boosting, neural networks, or ensemble methods
+5. **Early stopping**: Use validation sets to prevent overfitting
+6. **Anomaly detection**: Consider treating this as an anomaly detection problem rather than classification
 
