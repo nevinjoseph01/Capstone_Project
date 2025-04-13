@@ -352,6 +352,8 @@ Random Forest Model + Comparing Training vs Testing
 ```{r, include=FALSE}}
 # First model: Using mode-imputed data
 set.seed(42)
+shuffled_indices <- sample(1:nrow(data_mode_imputed))
+data_mode_imputed <- data_mode_imputed[shuffled_indices]
 train_index_imputed <- createDataPartition(data_mode_imputed$class, p = 0.7, list = FALSE)
 train_data_imputed <- data_mode_imputed[train_index_imputed]
 test_data_imputed <- data_mode_imputed[-train_index_imputed]
