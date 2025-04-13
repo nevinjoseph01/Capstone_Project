@@ -248,31 +248,162 @@ View(unique_values_df)
 
 
 
+Random Forest Model + Comparing Training vs Testing
 
-This ####  aint working
 ```{r, include=FALSE}}
 
-using("rpart")
-using("rpart.plot")  # for plotting the tree
-using("caret")
-
-# Fit the decision tree model
+# Split data into training and testing sets
 set.seed(42)
-tree_model <- rpart(class ~ ., data = data, method = "class", control = rpart.control(cp = 0.01))
+train_index <- createDataPartition(data$class, p = 0.7, list = FALSE)
+train_data <- data[train_index]
+test_data <- data[-train_index]
 
-# Visualize the tree
-rpart.plot(tree_model, extra = 104, fallen.leaves = TRUE)
+# Train Random Forest model with ranger
+model_rf <- ranger(
+  class ~ ., 
+  data = train_data,
+  importance = 'impurity',  # For feature importance
+  num.trees = 100,          # Start with fewer trees for speed
+  mtry = floor(sqrt(ncol(data) - 1)), # Default RF formula
+  min.node.size = 5,        # Smaller for better precision
+  verbose = TRUE            # Track progress
+)
 
-# Predict on the same data (quick check)
-pred <- predict(tree_model, data, type = "class")
+# Making predictions
+pred_rf <- predict(model_rf, data = test_data)
 
-# Evaluate performance
-confusionMatrix(pred, data$class)
 
+# NOTE: I GET ERROR IN CONFUSION MATRIX
+# DOESNT WORK: Error in `[.default`(data, , pos) : subscript out of bounds
+# confusionMatrix(pred_rf$predictions, test_data$class)
+
+
+#SO WE USE THIS INSTEAD!
+# Alternative method to evaluate predictions
+table_result <- table(Predicted = pred_rf$predictions, Actual = test_data$class)
+print(table_result)
+
+# Calculate accuracy manually
+# Predict on training data
+train_pred_rf <- predict(model_rf, data = train_data)
+
+# Create confusion matrix for training data
+train_table_result <- table(Predicted = train_pred_rf$predictions, Actual = train_data$class)
+
+# Calculate training accuracy manually
+train_accuracy <- sum(diag(train_table_result)) / sum(train_table_result)
+
+
+# Compare training and testing accuracy
+print(paste("Training Accuracy:", round(train_accuracy, 4)))
+print(paste("Testing Accuracy:", round(accuracy, 4)))
+
+# Get feature importance
+importance_df <- data.frame(
+  Feature = names(model_rf$variable.importance),
+  Importance = model_rf$variable.importance
+)
+importance_df <- importance_df[order(-importance_df$Importance), ]
+head(importance_df, 10)  # Show top 10 features
+
+
+
+```
+Accuracy on testing 0.9993"
+
+
+
+
+Metric Table
+
+```{r}
+# Calculate per-class precision, recall, and F1 score
+metrics_by_class <- data.frame(
+  Class = colnames(table_result),
+  Precision = diag(table_result) / colSums(table_result),
+  Recall = diag(table_result) / rowSums(table_result),
+  Support = rowSums(table_result)
+)
+
+# Add F1 score
+metrics_by_class$F1 <- 2 * (metrics_by_class$Precision * metrics_by_class$Recall) / 
+                        (metrics_by_class$Precision + metrics_by_class$Recall)
+
+# Replace NaN values with 0
+metrics_by_class[is.na(metrics_by_class)] <- 0
+
+# Print the metrics
+print(metrics_by_class[order(-metrics_by_class$Support),])
+
+# Calculate macro averages
+macro_avg <- data.frame(
+  Class = "macro_avg",
+  Precision = mean(metrics_by_class$Precision, na.rm = TRUE),
+  Recall = mean(metrics_by_class$Recall, na.rm = TRUE),
+  Support = sum(metrics_by_class$Support),
+  F1 = mean(metrics_by_class$F1, na.rm = TRUE)
+)
+
+# Weighted average (weight by support)
+weighted_avg <- data.frame(
+  Class = "weighted_avg",
+  Precision = sum(metrics_by_class$Precision * metrics_by_class$Support, na.rm = TRUE) / 
+              sum(metrics_by_class$Support, na.rm = TRUE),
+  Recall = sum(metrics_by_class$Recall * metrics_by_class$Support, na.rm = TRUE) / 
+           sum(metrics_by_class$Support, na.rm = TRUE),
+  Support = sum(metrics_by_class$Support),
+  F1 = sum(metrics_by_class$F1 * metrics_by_class$Support, na.rm = TRUE) / 
+        sum(metrics_by_class$Support, na.rm = TRUE)
+)
+
+# Combine all metrics
+all_metrics <- rbind(metrics_by_class, macro_avg, weighted_avg)
+print(all_metrics)
+
+# Visualize feature importance
+using("ggplot2")
+ggplot(importance_df[1:20,], aes(x = reorder(Feature, Importance), y = Importance)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Top 20 Features by Importance", 
+       x = "Features", 
+       y = "Importance Score")
 
 ```
 
 
+k-fold cross validation
 
+```{r}
+# K-fold cross-validation
+k <- 5
+folds <- createFolds(data$class, k = k)
+cv_results <- data.frame()
 
+for (i in 1:k) {
+  # Split data
+  test_indices <- folds[[i]]
+  cv_train <- data[-test_indices]
+  cv_test <- data[test_indices]
+  
+  # Train model
+  cv_model <- ranger(class ~ ., data = cv_train, num.trees = 100)
+  
+  # Predict
+  cv_pred <- predict(cv_model, data = cv_test)
+  cv_acc <- sum(cv_pred$predictions == cv_test$class) / nrow(cv_test)
+  
+  # Store results
+  cv_results <- rbind(cv_results, data.frame(Fold = i, Accuracy = cv_acc))
+}
+
+# Calculate mean and standard deviation
+mean_acc <- mean(cv_results$Accuracy)
+sd_acc <- sd(cv_results$Accuracy)
+print(paste("Mean CV Accuracy:", round(mean_acc, 4), "±", round(sd_acc, 4)))
+
+```
+
+We got 0.999 both on training/testing AND on the validation, which is incredibly good
 
