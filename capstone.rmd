@@ -385,10 +385,12 @@ for (j in numeric_cols) {
   # Apply to training data
   train_imputed[is.na(get(j)), (j) := median_value]
   train_removed[is.na(get(j)), (j) := median_value]
+  train_initial[is.na(get(j)), (j) := median_value]
   
   # Apply to test data
   test_imputed[is.na(get(j)), (j) := median_value]
   test_removed[is.na(get(j)), (j) := median_value]
+  #test_initial[is.na(get(j)), (j) := median_value]
 }
 
 # 3.5 Report sizes after preprocessing
@@ -399,43 +401,72 @@ cat("Test set with imputation:", nrow(test_imputed), "\n")
 cat("Test set with removal:", nrow(test_removed), "\n")
 ```
 
+
 ### Step 4: Feature Selection to Remove Potential Leakage
 
 ```{r}
-# 4.1 Using a simple decision tree to identify most important features
-using("rpart")
-using("rpart.plot")
+# 4.1 Alternative to decision trees for feature selection
 
-# Train a simple decision tree
-tree_model <- rpart(class ~ ., data = train_imputed, method = "class", 
-                   control = rpart.control(maxdepth = 5, cp = 0.01))
-
-# Plot the tree to see which features it uses first (potential leakage)
-rpart.plot(tree_model, extra = 1, under = TRUE, box.palette = "RdBu")
-
-# Get variable importance
-var_importance <- tree_model$variable.importance
-var_importance_df <- data.frame(
-  Feature = names(var_importance),
-  Importance = var_importance
+# First train a basic model to get feature importance
+set.seed(42)
+initial_model <- ranger(
+  class ~ .,
+  data = train_imputed,
+  importance = 'impurity',
+  num.trees = 50,  # Reduced for speed
+  mtry = floor(sqrt(ncol(train_imputed) - 1)),
+  min.node.size = 5,
+  verbose = TRUE
 )
-var_importance_df <- var_importance_df[order(-var_importance_df$Importance), ]
-print(var_importance_df)
 
-# 4.2 Create datasets without potentially leaky features
-# Based on correlation and importance analysis, identify suspicious features
-potentially_leaky_features <- c("count", "srv_count")  # Update based on your analysis
-cat("\nPotentially leaky features identified:", paste(potentially_leaky_features, collapse=", "), "\n")
+# Option 2: Use ranger's built-in feature importance directly
+importance_df <- data.frame(
+  Feature = names(initial_model$variable.importance),
+  Importance = initial_model$variable.importance
+)
+importance_df <- importance_df[order(-importance_df$Importance), ]
+print("Top 15 most important features based on Random Forest importance:")
+print(head(importance_df, 15))
 
-# Create versions without these features
+potentially_leaky_features_rf <- names(head(sort(initial_model$variable.importance, decreasing = TRUE), 5))
+cat("\nTop 5 potentially leaky features based on Random Forest importance:\n")
+print(potentially_leaky_features_rf)
+
+# Option 3: Use correlation to eliminate redundant features
+redundant_features <- c()
+correlation_threshold <- 0.95
+# Skip self-correlations (same feature correlated with itself)
+for (i in 1:nrow(high_correlations_df)) {
+  # Only consider different features that are highly correlated
+  if (high_correlations_df$Correlation[i] > correlation_threshold & 
+      high_correlations_df$Feature1[i] != high_correlations_df$Feature2[i]) {
+    # Keep the first feature in each highly correlated pair
+    redundant_features <- c(redundant_features, high_correlations_df$Feature2[i])
+  }
+}
+redundant_features <- unique(redundant_features)
+cat("\nRedundant features to remove based on correlation (threshold", correlation_threshold, "):", length(redundant_features), "\n")
+print(redundant_features)
+
+# Combine both approaches - RF important features and correlation redundant features
+potentially_leaky_features <- unique(c(potentially_leaky_features_rf, redundant_features))
+cat("\nTotal features to consider removing:", length(potentially_leaky_features), "\n")
+
+# Create reduced datasets without potentially leaky features
 train_imputed_reduced <- train_imputed[, !potentially_leaky_features, with = FALSE]
 test_imputed_reduced <- test_imputed[, !potentially_leaky_features, with = FALSE]
-train_removed_reduced <- train_removed[, !potentially_leaky_features, with = FALSE]
+train_removed_reduced <- train_removed[, !potentially_leaky_features, with = FALSE] 
 test_removed_reduced <- test_removed[, !potentially_leaky_features, with = FALSE]
+
+# Report dimensions after feature reduction
+cat("\nDimensions after feature reduction:\n")
+cat("Original features:", ncol(train_imputed), "\n")
+cat("Reduced features:", ncol(train_imputed_reduced), "\n")
+cat("Features removed:", ncol(train_imputed) - ncol(train_imputed_reduced), "\n")
 ```
 
-### Step 5: Model Training with Proper Validation
 
+### Step 5: Model Training with Proper Validation
 ```{r}
 # 5.1 Train model WITHOUT potentially leaky features
 model_reduced <- ranger(
@@ -445,25 +476,23 @@ model_reduced <- ranger(
   num.trees = 100,
   mtry = floor(sqrt(ncol(train_imputed_reduced) - 1)),
   min.node.size = 5,
-  verbose = TRUE
-)
+  verbose = TRUE)
 
 # 5.2 Evaluate on test set
 pred_reduced <- predict(model_reduced, data = test_imputed_reduced)
 test_acc_reduced <- sum(pred_reduced$predictions == test_imputed_reduced$class) / nrow(test_imputed_reduced)
 
 # 5.3 Compare with original model (with all features)
-model_full <- ranger(
+model_imputed <- ranger(
   class ~ ., 
   data = train_imputed,
   importance = 'impurity',
   num.trees = 100,
   mtry = floor(sqrt(ncol(train_imputed) - 1)),
   min.node.size = 5,
-  verbose = TRUE
-)
+  verbose = TRUE)
 
-pred_full <- predict(model_full, data = test_imputed)
+pred_full <- predict(model_imputed, data = test_imputed)
 test_acc_full <- sum(pred_full$predictions == test_imputed$class) / nrow(test_imputed)
 
 cat("\nAccuracy comparison:\n")
@@ -471,8 +500,8 @@ cat("Model with all features:", test_acc_full, "\n")
 cat("Model without leaky features:", test_acc_reduced, "\n")
 ```
 
-### Step 6: Per-Class Performance Analysis
 
+### Step 6: Per-Class Performance Analysis
 ```{r}
 # Generate confusion matrix
 test_conf_matrix <- table(Predicted = pred_reduced$predictions, Actual = test_imputed_reduced$class)
@@ -525,6 +554,59 @@ weighted_avg <- data.frame(
 all_metrics <- rbind(per_class_metrics, macro_avg, weighted_avg)
 print(all_metrics)
 ```
+1. Strong Evidence of Feature Redundancy
+You've successfully identified and removed 17 potentially problematic features (40% of the total), yet your model's accuracy only dropped from 99.92% to 99.71% (a mere 0.21% decrease). This is compelling evidence that:
+Many features were indeed redundant
+The connection count metrics (count, srv_count) were likely creating data leakage
+The model can achieve excellent performance with a much simpler feature set
+2. Class Imbalance Issues
+The per-class metrics highlight severe class imbalance:
+3 classes dominate: smurf (46,345), neptune (31,497), and normal (28,683)
+Several classes have fewer than 5 examples
+Some attack types have 0% precision/recall (rootkit, ftp_write, loadmodule)
+This explains the huge difference between:
+Weighted average (99.7%) - dominated by majority classes
+Macro average (60.4%) - equally weighted across all classes
+3. Feature Importance Analysis
+The top features are all traffic volume metrics:
+count and srv_count (connection counting)
+src_bytes and dst_bytes (data volume)
+same_srv_rate (connection patterns)
+This suggests the model relies heavily on simple traffic volume features rather than deeper behavioral patterns.
+4. Correlation Patterns
+The redundant features fall into clear groups:
+Error rate metrics: several variants measuring the same thing
+Host vs. connection metrics: similar measurements at different levels
+Root access indicators: highly correlated exploitation metrics
+5. Recommendations
+Focus on rare attack detection: Your model performs poorly on uncommon attack types - consider:
+Hierarchical classification (first normal/attack, then attack type)
+Oversampling rare classes (SMOTE)
+Class-weighted loss functions
+Further feature engineering: Create more discriminative features for the rarer attack types
+Evaluate on challenging subsets: Test the model only on rare attack types to better assess its real-world utility
+The fact that removing suspicious features barely hurt performance confirms you were right to investigate data leakage. The model is now more reliable, generalizable, and better represents real-world performance.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ### Step 7: Learning Curves to Diagnose Overfitting
 
