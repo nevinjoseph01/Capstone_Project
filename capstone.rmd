@@ -14,22 +14,14 @@ output:
 
 
 ```{r setup, include=FALSE}
-
-if (rstudioapi::isAvailable()) {
-  setwd(dirname(rstudioapi::getActiveDocumentContext()$path))}
+if (rstudioapi::isAvailable()) {setwd(dirname(rstudioapi::getActiveDocumentContext()$path))}
 
 options(width = 200)
 
-# Load libraries ---------------------------------------------------------------
-# Create our function "using()" 
-using <- \(pkg) {
-  # if a package is not installed, install it
-  if (!rlang::is_installed(pkg)) {
+using <- \(pkg) { # Create our function "using()" 
+  if (!rlang::is_installed(pkg)) {  # if a package is not installed, install it
     install.packages(pkg, repo = "https://cloud.r-project.org")}# load the package
-  library(pkg, character.only = TRUE)
-}
-
-
+  library(pkg, character.only = TRUE)}
 
 using("data.table") # The data manipulation king
 using("caret") # The ML swiss-knife - http://topepo.github.io/caret/available-models.html
@@ -39,23 +31,20 @@ using("xgboost") # Extreme Gradient boosting
 using("imbalance") # Oversampling
 using("ROSE") # Synthetic generation of new data to rebalance
 using("VIM")
-
+using ("ggplot2")
 ```
 
 
 ```{r data}
 data <- fread("data.csv")
-
 ```
-
 
 
 ```{r}
-str(data)
-View(data)
-
-
+#str(data)
+#View(data)
 ```
+
 
 ```{r}
 colnames(data)[1:42] <- c(
@@ -67,67 +56,75 @@ colnames(data)[1:42] <- c(
   "rerror_rate", "srv_rerror_rate", "same_srv_rate", "diff_srv_rate",
   "srv_diff_h_rate", "host_count", "host_srv_count", "h_same_sr_rate",
   "h_diff_srv_rate", "h_src_port_rate", "h_srv_d_h_rate", "h_serror_rate",
-  "h_sr_serror_rate", "h_rerror_rate", "h_sr_rerror_rate","class"
-)
+  "h_sr_serror_rate", "h_rerror_rate", "h_sr_rerror_rate","class")
+```
 
-```
+
+NA checks
 ```{r}
-as.data.frame(table(data$class))
-```
-```{r}
-any(is.na(data)) # 
 colSums(is.na(data)) #
-sum(complete.cases(data))
-# 22469
-nrow(data)
-# 528603
-
+sum(complete.cases(data)) # 22469
+nrow(data) # 528603
 ```
 
 
+Showing class balance:
 ```{r}
-# checking for duplicates:
+class_counts <- table(data$class)
+class_counts
+```
+The class imbalance we're seeing (with classes like b'smurf.', b'normal.', and b'neptune.' dominating while others have very few instances) is a separate issue from data leakage.
+With severe imbalance, a model might achieve high overall accuracy by favoring the majority classes. 
+However, high accuracy may mask poor performance on minority classes, and performance metrics like precision, recall, and F1-score are usually more informative in such cases.
+
+
+Handling duplicates:
+```{r}
 #sum(duplicated(data)) # 128935
 #nrow(data) - sum(duplicated(data))# 399668
-#remove duplicates
 data <- data[!duplicated(data), ]
-
-```
-```{r}
-
-#data.frame(names(data))
-
 ```
 
+
+Factor all to be factored
 ```{r}
 data$class <- as.factor(data$class)
 data$protocol_type <- as.factor(data$protocol_type)
 data$service <- as.factor(data$service)
 data$flag <- as.factor(data$flag)
-
-
-
-
 ```
 
-Finding no usefullness to samples with empty class, we decided remove them.
+
+How many unique values in each factor feature?
 ```{r}
-data[data$class == "", ] |> head(10)
-nrow(data[data$class == "", ]) # 36061
+length(unique(data$flag))
+length(unique(data$service))
+length(unique(data$protocol_type))
+```
+> length(unique(data$flag))
+[1] 13
+> length(unique(data$service))
+[1] 68
+> length(unique(data$protocol_type))
+[1] 5
+
+
+Having found no usefulness to samples with empty class, we decided remove them.
+```{r}
+# data[data$class == "", ] |> head(10)
+# nrow(data[data$class == "", ]) # 36061
 data <- data[data$class != '']
 ```
 
 
-```{r}
-
 #imputing:
-for (j in names(data)) {
-  if(is.numeric(data[[j]])) {
-    data[is.na(get(j)), (j) := median(data[[j]], na.rm = TRUE)]}} # fucking median imputation values is done now 
+#```{r}
+#for (j in names(data)) {
+#  if(is.numeric(data[[j]])) {
+#    data[is.na(get(j)), (j) := median(data[[j]], na.rm = TRUE)]}} # median imputation values is done now 
+#nrow(data) # 399668 after removing duplicates
+#```
 
-nrow(data) # 399668 after removing duplicates
-#View(data)
-```
 
 Removing outliers:
 Can't remove it right now because the target detection is not binary, but about 26 classes.
@@ -147,13 +144,13 @@ for(i in numeric_cols) {
     training_without_outliers <- training_without_outliers[!(
       class == j & (get(i) < lower_bound | get(i) > upper_bound))]}}
 
-nrow(training_without_outliers)/nrow(data)
+#nrow(training_without_outliers)/nrow(data)
 # 0.4350536
 ```
 
 
-
 Handling missing char/factor values:
+1. Check for empty cells in each factor column
 ```{r}
 # Count empty cells in each column
 empty_cells <- sapply(data, function(x) sum(x == ""))
@@ -161,10 +158,7 @@ View(as.data.frame(empty_cells))
 ```
 
 
-
-
-Checking for overlaping values:
-
+2. Checking for overlapping values:
 ```{r}
 # Count rows with missing values in each combination of factors
 missing_protocol <- data$protocol_type == ""
@@ -181,17 +175,13 @@ service_flag_overlap <- sum(missing_service & missing_flag)
 all_three_missing <- sum(missing_protocol & missing_service & missing_flag)
 percent_affected <- (total_missing_rows / nrow(data)) * 100
 ```
-
 Since removing ~25% of our data would be a substantial loss of information, AI recommends a combined approach:
-
 Analyze the patterns of missingness: Check if the missing values are related to specific classes or patterns in the data. This might give insight into whether the missing data is Missing at Random (MAR) or Missing Not at Random (MNAR).
 Mode imputation for rows with a single missing value: For rows where only one of the three variables is missing, use mode imputation.
 Consider removal for rows with multiple missing values: For rows where two or all three variables are missing (which appears to be a much smaller subset), consider removal if those patterns don't conform to an identifiable subset of your data.
 
 
-
-
-Checking percentages of missing chars in each feature:
+3. Checking percentages of missing chars in each feature:
 ```{r}
 empty_cells_percentage <- (empty_cells / nrow(data)) * 100
 #print(empty_cells_percentage)
@@ -200,33 +190,16 @@ empty_cells_percentage <- (empty_cells / nrow(data)) * 100
 empty_cells_df <- data.frame(
   Column = names(empty_cells),
   Empty_Cells = empty_cells,
-  Percentage = empty_cells_percentage
-)
+  Percentage = empty_cells_percentage)
 print(empty_cells_df)
-
-
 ```
-```{r}
 
-# Sort by percentage of empty cells
+
+4. Sorting by percentage of empty cells
+```{r}
 empty_cells_df <- empty_cells_df[order(-empty_cells_df$Percentage), ]
 print(empty_cells_df)
-
-
 ```
-
-
-```{r}
-length(unique(data$flag))
-length(unique(data$service))
-length(unique(data$protocol_type))
-```
-> length(unique(data$flag))
-[1] 13
-> length(unique(data$service))
-[1] 68
-> length(unique(data$protocol_type))
-[1] 5
 
 
 ```{r}
@@ -246,362 +219,425 @@ print(unique_values_df)
 View(unique_values_df)
 ```
 
-```{r}
 
-```
+## Addressing Data Leakage and Implementing Proper ML Pipeline
 
-## Creating Two Sets for Handling Missing Categorical Values
-
-### Dataset 1: Mode Imputation for Empty Character/Factor Values
+### Step 1: Initial Data Split (Before Any Processing)
 
 ```{r}
-# Create a copy of the original data
-data_mode_imputed <- copy(data)
+# Set seed for reproducibility
+set.seed(42)
+# First, shuffle the data before splitting
+data <- data[sample(1:nrow(data)), ]
+# Second, create a proper initial split BEFORE any preprocessing
+# This ensures test data remains completely unseen during training
+initial_split_indices <- createDataPartition(data$class, p = 0.7, list = FALSE)
+train_initial <- data[initial_split_indices]
+test_initial <- data[-initial_split_indices]
 
-# Calculate modes for categorical variables with empty values
-protocol_mode <- names(sort(table(data$protocol_type[data$protocol_type != ""]), decreasing = TRUE))[1]
-service_mode <- names(sort(table(data$service[data$service != ""]), decreasing = TRUE))[1]
-flag_mode <- names(sort(table(data$flag[data$flag != ""]), decreasing = TRUE))[1]
+cat("\n","Initial training set size:", nrow(train_initial), "\n")
+cat("Initial test set size:", nrow(test_initial), "\n")
+```
+70% was recommended because our data turned out to be not even that big! wtf is then huh? mf 🤨
+*The first warning* "Some classes have no records ( )" suggests there are empty/blank values in your class variable that are being treated as a separate class level, and these will be ignored during stratification.
+*The second warning* "Some classes have a single record ( target )" indicates there's only one instance of a class level called "target", and this single record will be automatically included in your sample.
 
-# Display the modes
-cat("Mode values for imputation:\n")
-cat("Protocol type mode:", protocol_mode, "\n")
-cat("Service mode:", service_mode, "\n")
-cat("Flag mode:", flag_mode, "\n")
 
-# Impute empty values with modes
-data_mode_imputed[protocol_type == "", protocol_type := protocol_mode]
-data_mode_imputed[service == "", service := service_mode]
-data_mode_imputed[flag == "", flag := flag_mode]
+### Step 2: Investigating Feature Correlations and Potential Leakage
+```{r}
+# Check correlation between numeric features
+numeric_cols <- names(train_initial)[sapply(train_initial, is.numeric)]
+correlation_matrix <- cor(train_initial[, ..numeric_cols], use = "pairwise.complete.obs")
 
-# Verify that imputation worked
-cat("\nVerifying imputation - count of empty values after imputation:\n")
-cat("Protocol type:", sum(data_mode_imputed$protocol_type == ""), "\n")
-cat("Service:", sum(data_mode_imputed$service == ""), "\n")
-cat("Flag:", sum(data_mode_imputed$flag == ""), "\n")
+# Find highly correlated features (above 0.9)
+high_correlations <- which(abs(correlation_matrix) > 0.9 & abs(correlation_matrix) < 1, arr.ind = TRUE)
+high_correlations_df <- data.frame(
+  Feature1 = numeric_cols[high_correlations[, 1]],
+  Feature2 = numeric_cols[high_correlations[, 2]],
+  Correlation = correlation_matrix[high_correlations])
 
-cat("\nRows in mode-imputed dataset:", nrow(data_mode_imputed), "\n")
+# Sort by absolute correlation value
+high_correlations_df <- high_correlations_df[order(-abs(high_correlations_df$Correlation)), ]
+print("Highly correlated features (potential source of leakage):")
+print(high_correlations_df)
+
+# Visualize correlation matrix
+using("corrplot")
+corrplot(correlation_matrix, method = "color", type = "upper", order = "hclust", 
+         tl.col = "black", tl.srt = 45, tl.cex = 0.7)
+
+# Check relationship between categorical features and target
+# Function to plot categorical feature distribution by class for top classes
+plot_cat_distribution <- function(feature, data) {
+  # Get top 5 classes
+  top_classes <- names(sort(table(data$class), decreasing = TRUE)[1:5])
+  
+  # Create a subset with only top classes for visualization clarity
+  plot_data <- data[data$class %in% top_classes]
+  
+  # Plot distribution
+  ggplot(plot_data, aes_string(x = feature, fill = "class")) +
+    geom_bar(position = "fill") +
+    theme_minimal() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = paste("Distribution of", feature, "by Class"),
+         y = "Proportion")}
+
+# Plot distributions for each categorical feature
+plot_cat_distribution("protocol_type", train_initial)
+plot_cat_distribution("service", train_initial)
+plot_cat_distribution("flag", train_initial)
+```
+> high_correlations_df
+           Feature1         Feature2 Correlation
+1         src_bytes        src_bytes   1.0000000
+2       wrong_fragt      wrong_fragt   1.0000000
+3    num_fail_login   num_fail_login   1.0000000
+7         nu_shells        nu_shells   1.0000000
+8   nu_access_files  nu_access_files   1.0000000
+24    same_srv_rate    same_srv_rate   1.0000000
+33    h_serror_rate    h_serror_rate   1.0000000
+38 h_sr_serror_rate h_sr_serror_rate   1.0000000
+4         logged_in        logged_in   1.0000000
+26       host_count       host_count   1.0000000
+34 h_sr_serror_rate    h_serror_rate   0.9876878
+37    h_serror_rate h_sr_serror_rate   0.9876878
+12  srv_serror_rate      serror_rate   0.9875461
+15      serror_rate  srv_serror_rate   0.9875461
+17 h_sr_serror_rate  srv_serror_rate   0.9866230
+36  srv_serror_rate h_sr_serror_rate   0.9866230
+13    h_serror_rate      serror_rate   0.9859460
+31      serror_rate    h_serror_rate   0.9859460
+16    h_serror_rate  srv_serror_rate   0.9854280
+32  srv_serror_rate    h_serror_rate   0.9854280
+14 h_sr_serror_rate      serror_rate   0.9847576
+35      serror_rate h_sr_serror_rate   0.9847576
+18  srv_rerror_rate      rerror_rate   0.9695355
+21      rerror_rate  srv_rerror_rate   0.9695355
+41 h_sr_rerror_rate    h_rerror_rate   0.9606830
+44    h_rerror_rate h_sr_rerror_rate   0.9606830
+19    h_rerror_rate      rerror_rate   0.9573980
+39      rerror_rate    h_rerror_rate   0.9573980
+23 h_sr_rerror_rate  srv_rerror_rate   0.9572933
+43  srv_rerror_rate h_sr_rerror_rate   0.9572933
+20 h_sr_rerror_rate      rerror_rate   0.9547408
+42      rerror_rate h_sr_rerror_rate   0.9547408
+22    h_rerror_rate  srv_rerror_rate   0.9539860
+40  srv_rerror_rate    h_rerror_rate   0.9539860
+27   h_same_sr_rate   host_srv_count   0.9532721
+29   host_srv_count   h_same_sr_rate   0.9532721
+5          num_root       nu_comprom   0.9504814
+6        nu_comprom         num_root   0.9504814
+9         srv_count            count   0.9240053
+10            count        srv_count   0.9240053
+25   h_same_sr_rate    same_srv_rate   0.9112884
+28    same_srv_rate   h_same_sr_rate   0.9112884
+11  h_src_port_rate        srv_count   0.9108083
+30        srv_count  h_src_port_rate   0.9108083
+
+
+NOTE:
+We absolutely can proceed with decision trees and random forests without imputing missing values in categorical features like protocol, service_type, and flag. Both these algorithms have built-in mechanisms to handle missing values:
+For decision trees:
+They can work with missing values by finding surrogate splits
+The algorithm can determine which path a missing value should take based on correlations with other features
+For random forests:
+Each tree in the ensemble can handle missing values differently
+The aggregate prediction across many trees often maintains good accuracy despite missing values
+### Step 3: Apply Preprocessing Only on Training Data
+```{r}
+# 3.1 Handle missing values in categorical features
+# First, calculate modes from training data only
+train_protocol_mode <- names(sort(table(train_initial$protocol_type[train_initial$protocol_type != ""]), 
+                                 decreasing = TRUE))[1]
+train_service_mode <- names(sort(table(train_initial$service[train_initial$service != ""]), 
+                                decreasing = TRUE))[1]
+train_flag_mode <- names(sort(table(train_initial$flag[train_initial$flag != ""]), 
+                             decreasing = TRUE))[1]
+
+cat("Mode values from training data:\n")
+cat("Protocol type mode:", train_protocol_mode, "\n")
+cat("Service mode:", train_service_mode, "\n")
+cat("Flag mode:", train_flag_mode, "\n")
+
+# 3.2 Create two versions of the training data
+# Version 1: Impute with modes from training data
+train_imputed <- copy(train_initial)
+train_imputed[protocol_type == "", protocol_type := train_protocol_mode]
+train_imputed[service == "", service := train_service_mode]
+train_imputed[flag == "", flag := train_flag_mode]
+
+# Version 2: Remove rows with empty values
+train_removed <- train_initial[protocol_type != "" & service != "" & flag != "", ]
+
+# 3.3 Apply same transformations to test data
+test_imputed <- copy(test_initial)
+test_imputed[protocol_type == "", protocol_type := train_protocol_mode]
+test_imputed[service == "", service := train_service_mode]
+test_imputed[flag == "", flag := train_flag_mode]
+
+test_removed <- test_initial[protocol_type != "" & service != "" & flag != "", ]
+
+# 3.4 For numeric features, calculate median on training data only
+for (j in numeric_cols) {
+  median_value <- median(train_initial[[j]], na.rm = TRUE)
+  
+  # Apply to training data
+  train_imputed[is.na(get(j)), (j) := median_value]
+  train_removed[is.na(get(j)), (j) := median_value]
+  
+  # Apply to test data
+  test_imputed[is.na(get(j)), (j) := median_value]
+  test_removed[is.na(get(j)), (j) := median_value]
+}
+
+# 3.5 Report sizes after preprocessing
+cat("\nAfter preprocessing:\n")
+cat("Training set with imputation:", nrow(train_imputed), "\n")
+cat("Training set with removal:", nrow(train_removed), "\n")
+cat("Test set with imputation:", nrow(test_imputed), "\n")
+cat("Test set with removal:", nrow(test_removed), "\n")
 ```
 
-### Dataset 2: Removal of Rows with Empty Character/Factor Values
+### Step 4: Feature Selection to Remove Potential Leakage
 
 ```{r}
-# Create a dataset with rows removed where any of the categorical features have empty values
-data_removed <- data[protocol_type != "" & service != "" & flag != "", ]
+# 4.1 Using a simple decision tree to identify most important features
+using("rpart")
+using("rpart.plot")
 
-# Check the number of rows removed
-cat("Original dataset rows:", nrow(data), "\n")
-cat("Rows after removal:", nrow(data_removed), "\n")
-cat("Percentage of data retained:", round(nrow(data_removed)/nrow(data) * 100, 2), "%\n")
+# Train a simple decision tree
+tree_model <- rpart(class ~ ., data = train_imputed, method = "class", 
+                   control = rpart.control(maxdepth = 5, cp = 0.01))
+
+# Plot the tree to see which features it uses first (potential leakage)
+rpart.plot(tree_model, extra = 1, under = TRUE, box.palette = "RdBu")
+
+# Get variable importance
+var_importance <- tree_model$variable.importance
+var_importance_df <- data.frame(
+  Feature = names(var_importance),
+  Importance = var_importance
+)
+var_importance_df <- var_importance_df[order(-var_importance_df$Importance), ]
+print(var_importance_df)
+
+# 4.2 Create datasets without potentially leaky features
+# Based on correlation and importance analysis, identify suspicious features
+potentially_leaky_features <- c("count", "srv_count")  # Update based on your analysis
+cat("\nPotentially leaky features identified:", paste(potentially_leaky_features, collapse=", "), "\n")
+
+# Create versions without these features
+train_imputed_reduced <- train_imputed[, !potentially_leaky_features, with = FALSE]
+test_imputed_reduced <- test_imputed[, !potentially_leaky_features, with = FALSE]
+train_removed_reduced <- train_removed[, !potentially_leaky_features, with = FALSE]
+test_removed_reduced <- test_removed[, !potentially_leaky_features, with = FALSE]
 ```
 
-## Addressing Multi-Class Classification and Potential Overfitting
+### Step 5: Model Training with Proper Validation
 
 ```{r}
-# Check class distribution
-class_counts <- table(data$class)
-n_classes <- length(class_counts)
+# 5.1 Train model WITHOUT potentially leaky features
+model_reduced <- ranger(
+  class ~ ., 
+  data = train_imputed_reduced,
+  importance = 'impurity',
+  num.trees = 100,
+  mtry = floor(sqrt(ncol(train_imputed_reduced) - 1)),
+  min.node.size = 5,
+  verbose = TRUE
+)
 
-cat("Number of classes:", n_classes, "\n")
-cat("Class distribution (top 10):\n")
-print(sort(class_counts, decreasing = TRUE)[1:10])
+# 5.2 Evaluate on test set
+pred_reduced <- predict(model_reduced, data = test_imputed_reduced)
+test_acc_reduced <- sum(pred_reduced$predictions == test_imputed_reduced$class) / nrow(test_imputed_reduced)
 
-# Calculate class imbalance metrics
-max_class_pct <- max(class_counts) / sum(class_counts) * 100
-min_class_pct <- min(class_counts) / sum(class_counts) * 100
+# 5.3 Compare with original model (with all features)
+model_full <- ranger(
+  class ~ ., 
+  data = train_imputed,
+  importance = 'impurity',
+  num.trees = 100,
+  mtry = floor(sqrt(ncol(train_imputed) - 1)),
+  min.node.size = 5,
+  verbose = TRUE
+)
 
-cat("\nClass imbalance metrics:\n")
-cat("Most common class: ", round(max_class_pct, 2), "% of data\n", sep="")
-cat("Least common class: ", round(min_class_pct, 4), "% of data\n", sep="")
-cat("Ratio between most and least common: ", round(max(class_counts)/min(class_counts), 2), "\n", sep="")
+pred_full <- predict(model_full, data = test_imputed)
+test_acc_full <- sum(pred_full$predictions == test_imputed$class) / nrow(test_imputed)
+
+cat("\nAccuracy comparison:\n")
+cat("Model with all features:", test_acc_full, "\n")
+cat("Model without leaky features:", test_acc_reduced, "\n")
 ```
 
-## Discussion on Model Selection and Overfitting
+### Step 6: Per-Class Performance Analysis
 
-Random Forest is indeed appropriate for multi-class classification problems, but the extremely high accuracy (0.994/0.999) suggests potential issues:
+```{r}
+# Generate confusion matrix
+test_conf_matrix <- table(Predicted = pred_reduced$predictions, Actual = test_imputed_reduced$class)
 
-1. **Data leakage**: Some features might directly reveal the class label
-2. **Overfitting**: The model could be memorizing the training data rather than learning generalizable patterns
-3. **Class imbalance**: High accuracy might be achieved by simply predicting the majority class
-4. **Data redundancy**: Despite removing duplicates, highly correlated features might exist
+# Calculate per-class metrics
+per_class_metrics <- data.frame(
+  Class = colnames(test_conf_matrix),
+  Precision = diag(test_conf_matrix) / colSums(test_conf_matrix),
+  Recall = diag(test_conf_matrix) / rowSums(test_conf_matrix)
+)
 
-Recommended next steps:
+# Add F1 score
+per_class_metrics$F1 <- 2 * (per_class_metrics$Precision * per_class_metrics$Recall) / 
+                         (per_class_metrics$Precision + per_class_metrics$Recall)
+
+# Add support (number of instances)
+per_class_metrics$Support <- table(test_imputed_reduced$class)[per_class_metrics$Class]
+
+# Replace NaN values with 0
+per_class_metrics[is.na(per_class_metrics)] <- 0
+
+# Sort by support (frequency)
+per_class_metrics <- per_class_metrics[order(-per_class_metrics$Support), ]
+
+# Display top 10 classes by frequency
+head(per_class_metrics, 10)
+
+# Calculate macro average (unweighted mean of all classes)
+macro_avg <- data.frame(
+  Class = "macro_avg",
+  Precision = mean(per_class_metrics$Precision, na.rm = TRUE),
+  Recall = mean(per_class_metrics$Recall, na.rm = TRUE),
+  F1 = mean(per_class_metrics$F1, na.rm = TRUE),
+  Support = sum(per_class_metrics$Support)
+)
+
+# Calculate weighted average (weighted by support)
+weighted_avg <- data.frame(
+  Class = "weighted_avg",
+  Precision = sum(per_class_metrics$Precision * per_class_metrics$Support, na.rm = TRUE) / 
+              sum(per_class_metrics$Support, na.rm = TRUE),
+  Recall = sum(per_class_metrics$Recall * per_class_metrics$Support, na.rm = TRUE) / 
+           sum(per_class_metrics$Support, na.rm = TRUE),
+  F1 = sum(per_class_metrics$F1 * per_class_metrics$Support, na.rm = TRUE) / 
+        sum(per_class_metrics$Support, na.rm = TRUE),
+  Support = sum(per_class_metrics$Support)
+)
+
+# Combine all metrics
+all_metrics <- rbind(per_class_metrics, macro_avg, weighted_avg)
+print(all_metrics)
+```
+
+### Step 7: Learning Curves to Diagnose Overfitting
+
+```{r}
+# 7.1 Create a function to plot learning curves
+plot_learning_curve <- function(data, target, model_fn, train_sizes = seq(0.1, 1.0, by = 0.1)) {
+  n <- nrow(data)
+  train_scores <- numeric(length(train_sizes))
+  test_scores <- numeric(length(train_sizes))
+  
+  # Create a validation set
+  set.seed(123)
+  indices <- sample(1:n, size = n * 0.8)
+  train_full <- data[indices, ]
+  validation <- data[-indices, ]
+  
+  for (i in seq_along(train_sizes)) {
+    # Take a subset of the training data
+    size <- floor(train_sizes[i] * nrow(train_full))
+    train_subset <- train_full[1:size, ]
+    
+    # Train model
+    model <- model_fn(train_subset)
+    
+    # Evaluate on training and validation
+    train_pred <- predict(model, data = train_subset)
+    train_scores[i] <- sum(train_pred$predictions == train_subset[[target]]) / nrow(train_subset)
+    
+    val_pred <- predict(model, data = validation)
+    test_scores[i] <- sum(val_pred$predictions == validation[[target]]) / nrow(validation)
+  }
+  
+  # Create plot data
+  plot_data <- data.frame(
+    TrainSize = train_sizes * nrow(train_full),
+    TrainScore = train_scores,
+    ValidationScore = test_scores
+  )
+  
+  # Plot
+  ggplot(plot_data, aes(x = TrainSize)) +
+    geom_line(aes(y = TrainScore, color = "Training Score")) +
+    geom_line(aes(y = ValidationScore, color = "Validation Score")) +
+    geom_point(aes(y = TrainScore, color = "Training Score")) +
+    geom_point(aes(y = ValidationScore, color = "Validation Score")) +
+    scale_color_manual(values = c("Training Score" = "blue", "Validation Score" = "red")) +
+    labs(title = "Learning Curve",
+         x = "Training Set Size",
+         y = "Accuracy",
+         color = "Score Type") +
+    theme_minimal()
+}
+
+# 7.2 Define model function for ranger
+ranger_fn <- function(data) {
+  ranger(
+    class ~ ., 
+    data = data,
+    num.trees = 50,  # Reduced for speed
+    mtry = floor(sqrt(ncol(data) - 1)),
+    min.node.size = 5
+  )
+}
+
+# 7.3 Plot learning curve
+plot_learning_curve(train_imputed_reduced, "class", ranger_fn)
+
+# Compare with a smaller feature set
+# Select just a few key features for a simpler model
+key_features <- c("protocol_type", "service", "flag", "src_bytes", "dst_bytes", "logged_in")
+train_simple <- train_imputed[, c(key_features, "class"), with = FALSE]
+
+# Plot learning curve with simple model
+plot_learning_curve(train_simple, "class", ranger_fn)
+```
+
+### Step 8: Recommended Research Questions
+
+Based on our analysis of potential data leakage and class imbalance, here are three focused research questions:
+
+1. **How do protocol metadata features alone (protocol_type, service, flag) perform in detecting network attacks compared to traffic volume metrics?**
+   - This question helps isolate the predictive power of categorical network attributes versus potentially leaky volume metrics.
+
+2. **What are the distinctive patterns of minority attack classes that differentiate them from normal traffic and common attack types?**
+   - Focuses on understanding rare attacks that might be overlooked due to class imbalance.
+
+3. **Can temporal patterns in network connection features provide early warning signals for specific attack types?**
+   - Investigates whether sequence patterns in the data could improve attack prediction before they fully develop.
+
+These questions directly address the issues we've identified with potential data leakage and class imbalance while aligning with the project's core objective of network intrusion detection.
+
+## Implementations for the recommended approach
 
 ```{r, eval=FALSE}
-# Suggestions for addressing potential overfitting:
+# Additional implementations of the approaches you suggested:
 
-# 1. Feature importance analysis to identify potential data leakage
-# Already implemented in your current code
+# 1. Dimensionality reduction with PCA
+using("stats")
+# Only apply PCA to numeric features
+pca_features <- prcomp(train_imputed[, ..numeric_cols], scale. = TRUE)
+# Determine number of components that explain 95% of variance
+variance_explained <- cumsum(pca_features$sdev^2 / sum(pca_features$sdev^2))
+n_components <- which(variance_explained >= 0.95)[1]
+# Create reduced feature set
+pca_train <- predict(pca_features, train_imputed[, ..numeric_cols])[, 1:n_components]
+pca_test <- predict(pca_features, test_imputed[, ..numeric_cols])[, 1:n_components]
 
-# 2. Learning curves to diagnose overfitting
-# You might add code like:
-# plot_learning_curve <- function(...)
+# 2. Class balancing with SMOTE (for minority classes)
+# This would be implemented for severely imbalanced classes
 
-# 3. Confusion matrix analysis by class
-# Already implemented in your code
-
-# 4. Try simpler models first
-# For example, decision trees or logistic regression
-
-# 5. Consider stratified sampling for class imbalance
-# trainIndex <- createDataPartition(data$class, p=0.7, list=FALSE, times=1)
+# 3. Different model architectures
+# - Try simpler models like decision trees
+# - Consider ensemble methods like XGBoost
+# - Implement neural networks for complex pattern recognition
 ```
-
-Random Forest Model + Comparing Training vs Testing
-
-```{r, include=FALSE}}
-# First model: Using mode-imputed data
-set.seed(42)
-shuffled_indices <- sample(1:nrow(data_mode_imputed))
-data_mode_imputed <- data_mode_imputed[shuffled_indices]
-train_index_imputed <- createDataPartition(data_mode_imputed$class, p = 0.7, list = FALSE)
-train_data_imputed <- data_mode_imputed[train_index_imputed]
-test_data_imputed <- data_mode_imputed[-train_index_imputed]
-
-# Train Random Forest on imputed data
-model_rf_imputed <- ranger(
-  class ~ ., 
-  data = train_data_imputed,
-  importance = 'impurity',
-  num.trees = 100,
-  mtry = floor(sqrt(ncol(data_mode_imputed) - 1)),
-  min.node.size = 5,
-  verbose = TRUE
-)
-
-# Predict on imputed test data
-pred_rf_imputed <- predict(model_rf_imputed, data = test_data_imputed)
-table_result_imputed <- table(Predicted = pred_rf_imputed$predictions, Actual = test_data_imputed$class)
-accuracy_imputed <- sum(diag(table_result_imputed)) / sum(table_result_imputed)
-
-# Get feature importance for imputed model
-importance_df_imputed <- data.frame(
-  Feature = names(model_rf_imputed$variable.importance),
-  Importance = model_rf_imputed$variable.importance
-)
-importance_df_imputed <- importance_df_imputed[order(-importance_df_imputed$Importance), ]
-
-# Second model: Using data with rows removed
-set.seed(42)
-train_index_removed <- createDataPartition(data_removed$class, p = 0.7, list = FALSE)
-train_data_removed <- data_removed[train_index_removed]
-test_data_removed <- data_removed[-train_index_removed]
-
-# Train Random Forest on data with rows removed
-model_rf_removed <- ranger(
-  class ~ ., 
-  data = train_data_removed,
-  importance = 'impurity',
-  num.trees = 100,
-  mtry = floor(sqrt(ncol(data_removed) - 1)),
-  min.node.size = 5,
-  verbose = TRUE
-)
-
-# Predict on test data with rows removed
-pred_rf_removed <- predict(model_rf_removed, data = test_data_removed)
-table_result_removed <- table(Predicted = pred_rf_removed$predictions, Actual = test_data_removed$class)
-accuracy_removed <- sum(diag(table_result_removed)) / sum(table_result_removed)
-
-# Get feature importance for removed-rows model
-importance_df_removed <- data.frame(
-  Feature = names(model_rf_removed$variable.importance),
-  Importance = model_rf_removed$variable.importance
-)
-importance_df_removed <- importance_df_removed[order(-importance_df_removed$Importance), ]
-
-# Compare the results
-cat("Accuracy with mode imputation:", accuracy_imputed, "\n")
-cat("Accuracy with rows removed:", accuracy_removed, "\n")
-
-# Compare top 10 important features from both approaches
-top_features_comparison <- data.frame(
-  Rank = 1:10,
-  Imputed_Feature = importance_df_imputed$Feature[1:10],
-  Imputed_Importance = importance_df_imputed$Importance[1:10],
-  Removed_Feature = importance_df_removed$Feature[1:10],
-  Removed_Importance = importance_df_removed$Importance[1:10]
-)
-print(top_features_comparison)
-
-# Original model for reference
-# Split data into training and testing sets
-# set.seed(42)
-# train_index <- createDataPartition(data$class, p = 0.7, list = FALSE)
-# train_data <- data[train_index]
-# test_data <- data[-train_index]
-
-# # Train Random Forest model with ranger
-# model_rf <- ranger(
-#   class ~ ., 
-#   data = train_data,
-#   importance = 'impurity',  # For feature importance
-#   num.trees = 100,          # Start with fewer trees for speed
-#   mtry = floor(sqrt(ncol(data) - 1)), # Default RF formula
-#   min.node.size = 5,        # Smaller for better precision
-#   verbose = TRUE            # Track progress
-# )
-
-# # Making predictions
-# pred_rf <- predict(model_rf, data = test_data)
-
-
-# # NOTE: I GET ERROR IN CONFUSION MATRIX
-# # DOESNT WORK: Error in `[.default`(data, , pos) : subscript out of bounds
-# # confusionMatrix(pred_rf$predictions, test_data$class)
-
-
-# #SO WE USE THIS INSTEAD!
-# # Alternative method to evaluate predictions
-# table_result <- table(Predicted = pred_rf$predictions, Actual = test_data$class)
-# print(table_result)
-
-# # Calculate accuracy manually
-# # Predict on training data
-# train_pred_rf <- predict(model_rf, data = train_data)
-
-# # Create confusion matrix for training data
-# train_table_result <- table(Predicted = train_pred_rf$predictions, Actual = train_data$class)
-
-# # Calculate training accuracy manually
-# train_accuracy <- sum(diag(train_table_result)) / sum(train_table_result)
-
-
-# # Compare training and testing accuracy
-# print(paste("Training Accuracy:", round(train_accuracy, 4)))
-# print(paste("Testing Accuracy:", round(accuracy, 4)))
-
-# # Get feature importance
-# importance_df <- data.frame(
-#   Feature = names(model_rf$variable.importance),
-#   Importance = model_rf$variable.importance
-# )
-# importance_df <- importance_df[order(-importance_df$Importance), ]
-# head(importance_df, 10)  # Show top 10 features
-
-```
-
-## Comparison of Model Performance: Imputed vs. Removed
-
-```{r}
-# Create a comparison table of the two approaches
-performance_comparison <- data.frame(
-  Metric = c("Dataset Size", "Accuracy", "Top Feature"),
-  Imputed_Data = c(nrow(data_mode_imputed), 
-                   round(accuracy_imputed, 4), 
-                   as.character(importance_df_imputed$Feature[1])),
-  Removed_Data = c(nrow(data_removed), 
-                  round(accuracy_removed, 4), 
-                  as.character(importance_df_removed$Feature[1]))
-)
-
-# Print the comparison
-print(performance_comparison)
-
-# Compare class distributions in both datasets
-class_dist_imputed <- prop.table(table(data_mode_imputed$class)) * 100
-class_dist_removed <- prop.table(table(data_removed$class)) * 100
-
-# Get top 5 classes
-top_classes <- names(sort(table(data$class), decreasing = TRUE)[1:5])
-
-class_dist_comparison <- data.frame(
-  Class = top_classes,
-  Imputed_Pct = round(class_dist_imputed[top_classes], 2),
-  Removed_Pct = round(class_dist_removed[top_classes], 2),
-  Difference = round(class_dist_imputed[top_classes] - class_dist_removed[top_classes], 2)
-)
-
-print(class_dist_comparison)
-```
-
-## Evaluation of Random Forest for Multi-Class Classification
-
-For a 25-category classification problem, Random Forest is generally a good choice because:
-
-1. It naturally handles multi-class problems without requiring one-vs-all transformations
-2. It can capture complex, non-linear relationships between features
-3. It provides feature importance measures
-4. It's robust to irrelevant features
-
-However, the extremely high accuracy (0.99+) in both training and testing suggests potential issues:
-
-1. **Data leakage**: Some features might be too predictive, implying information leakage
-2. **Class imbalance**: Very high accuracy might come from predicting dominant classes well
-3. **Overfitting**: The model might be capturing noise or memorizing patterns specific to this dataset
-
-## K-fold Cross-Validation with Both Datasets
-
-```{r}
-# K-fold cross-validation for mode-imputed data
-k <- 5
-folds_imputed <- createFolds(data_mode_imputed$class, k = k)
-cv_results_imputed <- data.frame()
-
-for (i in 1:k) {
-  # Split data
-  test_indices <- folds_imputed[[i]]
-  cv_train <- data_mode_imputed[-test_indices]
-  cv_test <- data_mode_imputed[test_indices]
-  
-  # Train model (with fewer trees for speed)
-  cv_model <- ranger(class ~ ., data = cv_train, num.trees = 50)
-  
-  # Predict
-  cv_pred <- predict(cv_model, data = cv_test)
-  cv_acc <- sum(cv_pred$predictions == cv_test$class) / nrow(cv_test)
-  
-  # Store results
-  cv_results_imputed <- rbind(cv_results_imputed, data.frame(Fold = i, Accuracy = cv_acc))
-}
-
-# Calculate mean and standard deviation for imputed data
-mean_acc_imputed <- mean(cv_results_imputed$Accuracy)
-sd_acc_imputed <- sd(cv_results_imputed$Accuracy)
-
-# K-fold cross-validation for removed-rows data
-folds_removed <- createFolds(data_removed$class, k = k)
-cv_results_removed <- data.frame()
-
-for (i in 1:k) {
-  # Split data
-  test_indices <- folds_removed[[i]]
-  cv_train <- data_removed[-test_indices]
-  cv_test <- data_removed[test_indices]
-  
-  # Train model (with fewer trees for speed)
-  cv_model <- ranger(class ~ ., data = cv_train, num.trees = 50)
-  
-  # Predict
-  cv_pred <- predict(cv_model, data = cv_test)
-  cv_acc <- sum(cv_pred$predictions == cv_test$class) / nrow(cv_test)
-  
-  # Store results
-  cv_results_removed <- rbind(cv_results_removed, data.frame(Fold = i, Accuracy = cv_acc))
-}
-
-# Calculate mean and standard deviation for removed-rows data
-mean_acc_removed <- mean(cv_results_removed$Accuracy)
-sd_acc_removed <- sd(cv_results_removed$Accuracy)
-
-# Compare cross-validation results
-cv_comparison <- data.frame(
-  Dataset = c("Mode Imputed", "Rows Removed"),
-  Mean_Accuracy = c(mean_acc_imputed, mean_acc_removed),
-  Std_Deviation = c(sd_acc_imputed, sd_acc_removed)
-)
-
-print(cv_comparison)
-```
-
-## Discussion and Next Steps
-
-Based on the research questions in the README and the results of our analysis, here are some recommendations:
-
-1. **Feature engineering**: Create new features that might better capture attack patterns
-2. **Dimensionality reduction**: Consider PCA or feature selection to reduce redundancy
-3. **Class rebalancing**: Try SMOTE or other techniques for the minority classes
-4. **Different model architectures**: Try gradient boosting, neural networks, or ensemble methods
-5. **Early stopping**: Use validation sets to prevent overfitting
-6. **Anomaly detection**: Consider treating this as an anomaly detection problem rather than classification
 
