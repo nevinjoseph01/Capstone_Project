@@ -1,7 +1,7 @@
 ---
 title: "Decision Trees Assignment"
 author: "Abed, Nevin, and Heshan"
-date: "2025-04-09"
+date: "2025-04-22"
 output:
   html_document:
     code_folding: hide
@@ -41,8 +41,9 @@ data <- fread("data.csv")
 
 
 ```{r}
-#str(data)
+str(data)
 #View(data)
+
 ```
 
 
@@ -62,20 +63,12 @@ colnames(data)[1:42] <- c(
 
 NA checks
 ```{r}
-colSums(is.na(data)) #
+#View(colSums(is.na(data))) #
 sum(complete.cases(data)) # 22469
 nrow(data) # 528603
 ```
 
 
-Showing class balance:
-```{r}
-class_counts <- table(data$class)
-class_counts
-```
-The class imbalance we're seeing (with classes like b'smurf.', b'normal.', and b'neptune.' dominating while others have very few instances) is a separate issue from data leakage.
-With severe imbalance, a model might achieve high overall accuracy by favoring the majority classes. 
-However, high accuracy may mask poor performance on minority classes, and performance metrics like precision, recall, and F1-score are usually more informative in such cases.
 
 
 Handling duplicates:
@@ -131,22 +124,25 @@ Can't remove it right now because the target detection is not binary, but about 
 The following chunk is disabled for "run above" button
 ```{r, include=FALSE}
 # removing outliers:
-training_without_outliers <- copy(data)
-numeric_cols <- names(data)[sapply(data, is.numeric)]
-for(i in numeric_cols) { 
-  for(j in unique(data$class)) {
-    values <- data[class == j, get(i)]
-    Q1 <- quantile(values, 0.25)
-    Q3 <- quantile(values, 0.75)
-    IQR <- Q3 - Q1
-    lower_bound <- Q1 - 1.5 * IQR
-    upper_bound <- Q3 + 1.5 * IQR
-    training_without_outliers <- training_without_outliers[!(
-      class == j & (get(i) < lower_bound | get(i) > upper_bound))]}}
-
-#nrow(training_without_outliers)/nrow(data)
-# 0.4350536
+#training_without_outliers <- copy(data)
+#numeric_cols <- names(data)[sapply(data, is.numeric)]
+#for(i in numeric_cols) { 
+#  for(j in unique(data$class)) {
+#    values <- data[class == j, get(i)]
+#    Q1 <- quantile(values, 0.25)
+#    Q3 <- quantile(values, 0.75)
+#    IQR <- Q3 - Q1
+#    lower_bound <- Q1 - 1.5 * IQR
+#    upper_bound <- Q3 + 1.5 * IQR
+#    training_without_outliers <- training_without_outliers[!(
+#      class == j & (get(i) < lower_bound | get(i) > upper_bound))]}}
+#
+##nrow(training_without_outliers)/nrow(data)
+## 0.4350536
 ```
+
+
+
 
 
 Handling missing char/factor values:
@@ -196,7 +192,7 @@ print(empty_cells_df)
 
 
 4. Sorting by percentage of empty cells
-```{r}
+```{r, warning=FALSE}
 empty_cells_df <- empty_cells_df[order(-empty_cells_df$Percentage), ]
 print(empty_cells_df)
 ```
@@ -210,8 +206,7 @@ unique_values_df <- data.frame(
   Unique_Values = unique_values)
 
 # Sort by number of unique values
-unique_values_df <- unique_values_df[order(-unique_values_df$Unique_Values), ]
-
+unique_values_df <- unique_values_df[order(unique_values_df$Unique_Values), ] # Ascending order
 # Print the table
 print(unique_values_df)
 
@@ -224,7 +219,7 @@ View(unique_values_df)
 
 ### Step 1: Initial Data Split (Before Any Processing)
 
-```{r}
+```{r, warning=FALSE}
 # Set seed for reproducibility
 set.seed(42)
 # First, shuffle the data before splitting
@@ -244,7 +239,7 @@ cat("Initial test set size:", nrow(test_initial), "\n")
 
 
 ### Step 2: Investigating Feature Correlations and Potential Leakage
-```{r}
+```{r, include=FALSE}
 # Check correlation between numeric features
 numeric_cols <- names(train_initial)[sapply(train_initial, is.numeric)]
 correlation_matrix <- cor(train_initial[, ..numeric_cols], use = "pairwise.complete.obs")
@@ -288,7 +283,11 @@ plot_cat_distribution("protocol_type", train_initial)
 plot_cat_distribution("service", train_initial)
 plot_cat_distribution("flag", train_initial)
 ```
-> high_correlations_df
+```{r, include=FALSE}
+
+
+high_correlations_df
+"
            Feature1         Feature2 Correlation
 1         src_bytes        src_bytes   1.0000000
 2       wrong_fragt      wrong_fragt   1.0000000
@@ -333,7 +332,20 @@ plot_cat_distribution("flag", train_initial)
 25   h_same_sr_rate    same_srv_rate   0.9112884
 28    same_srv_rate   h_same_sr_rate   0.9112884
 11  h_src_port_rate        srv_count   0.9108083
-30        srv_count  h_src_port_rate   0.9108083
+30        srv_count  h_src_port_rate   0.9108083"
+```
+
+
+Showing class balance:
+```{r}
+class_counts <- table(data$class)
+class_counts
+View(as.data.frame(class_counts))
+```
+The class imbalance we're seeing (with classes like b'smurf.', b'normal.', and b'neptune.' dominating while others have very few instances) is a separate issue from data leakage.
+With severe imbalance, a model might achieve high overall accuracy by favoring the majority classes. 
+However, high accuracy may mask poor performance on minority classes, and performance metrics like precision, recall, and F1-score are usually more informative in such cases.
+
 
 
 NOTE:
@@ -404,7 +416,7 @@ cat("Test set with removal:", nrow(test_removed), "\n")
 
 ### Step 4: Feature Selection to Remove Potential Leakage
 
-```{r}
+```{r, warnings=FALSE}
 # 4.1 Alternative to decision trees for feature selection
 
 # First train a basic model to get feature importance
@@ -425,10 +437,11 @@ importance_df <- data.frame(
   Importance = initial_model$variable.importance
 )
 importance_df <- importance_df[order(-importance_df$Importance), ]
-print("Top 15 most important features based on Random Forest importance:")
-print(head(importance_df, 15))
+print("Top the least important features based on Random Forest importance:")
+print(importance_df)
+#View(importance_df)
 
-potentially_leaky_features_rf <- names(head(sort(initial_model$variable.importance, decreasing = TRUE), 5))
+potentially_leaky_features_rf <- names(head(sort(initial_model$variable.importance, decreasing = T), 5))
 cat("\nTop 5 potentially leaky features based on Random Forest importance:\n")
 print(potentially_leaky_features_rf)
 
@@ -467,7 +480,7 @@ cat("Features removed:", ncol(train_imputed) - ncol(train_imputed_reduced), "\n"
 
 
 ### Step 5: Model Training with Proper Validation
-```{r}
+```{r, warning=FALSE}
 # 5.1 Train model WITHOUT potentially leaky features
 model_reduced <- ranger(
   class ~ ., 
@@ -502,7 +515,7 @@ cat("Model without leaky features:", test_acc_reduced, "\n")
 
 
 ### Step 6: Per-Class Performance Analysis
-```{r}
+```{r, warning=FALSE}
 # Generate confusion matrix
 test_conf_matrix <- table(Predicted = pred_reduced$predictions, Actual = test_imputed_reduced$class)
 
@@ -610,7 +623,7 @@ The fact that removing suspicious features barely hurt performance confirms you 
 
 ### Step 7: Learning Curves to Diagnose Overfitting
 
-```{r}
+```{r, warning=FALSE}
 # 7.1 Create a function to plot learning curves
 plot_learning_curve <- function(data, target, model_fn, train_sizes = seq(0.1, 1.0, by = 0.1)) {
   n <- nrow(data)
