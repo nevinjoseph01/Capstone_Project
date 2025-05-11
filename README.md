@@ -10,11 +10,10 @@
 ## To do list:
 | 2-do | importance | details |
 | -------- | -------- | -------- |
-| Research question   |  1   | All participation needed   |
-| Research Objectives   |  1   | All participation needed   |
-| Presentation   |  2   | Any takers?   |
+| Research questions confirmation  |  1   | All participation needed   |
+| Research Objectives  confirmation |  1   | All participation needed   |
+| Feature selection and scaling   | 2   | Midani's task   |
 | Structure plan  |  1   | tasks coordination   |
-| More PREPROCESSING steps   | 2   | Midani's task   |
 | Stuff 3   |  10   |  NA  |
 | Stuff 4   |  10  |  NA  |
 
