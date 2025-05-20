@@ -265,8 +265,10 @@ for (cls in unique(data$class[data$class != ""])) {
     balanced_data <- rbind(balanced_data, class_data)
   }
 }
+```
 
-# Now handle the minority classes using SMOTE
+#### Now handle the minority classes using SMOTE
+```{r}
 # First convert to data.frame (SMOTE functions expect data.frames)
 balanced_df <- as.data.frame(balanced_data)
 
@@ -405,6 +407,9 @@ cat("Balanced dataset size (simple approach):", nrow(balanced_data_simple), "\n"
 
 # Use the simpler balanced dataset for further modeling
 balanced_data <- balanced_data_simple
+#### removing empty class:
+balanced_data$class <- droplevels(balanced_data$class)
+#table(balanced_data$class)
 ```
 
 Before Balancing:
@@ -589,6 +594,7 @@ print(macro_avg)
 ```
 
 Our Random Forest model demonstrates outstanding performance on the test set, achieving an overall accuracy of 99.75%, indicating that the vast majority of instances were correctly classified. The macro-averaged F1-score of 0.8774 further supports the model’s strong ability to generalize across all classes, despite varying support levels. Classes such as b'neptune.', b'smurf.', and b'teardrop.' show near-perfect classification results, with precision and recall values close to or exactly 1.0, suggesting that the model effectively distinguishes these frequent attack types with high reliability. Other classes like b'normal.', b'pod.', and b'satan.' also exhibit very strong performance, with F1-scores above 0.97. A notable exception is the class b'warezclient.', which has a lower recall of 0.63 despite high precision (0.997), indicating the model struggles to capture all true instances of this class—possibly due to its overlap with other behaviors or lower representation. The class b'nmap.' also shows slightly lower recall at 0.86, reflecting moderate difficulty in detecting this specific attack. Finally, one row corresponding to a blank or unrecognized class (Class = "") contains zero instances, which is correctly reflected by a lack of metrics. Overall, the model maintains a good balance between precision and recall across most classes, and the high macro-average values indicate that performance is not dominated by only the most common categories.
+
 
 
 
