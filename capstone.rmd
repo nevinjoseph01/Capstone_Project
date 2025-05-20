@@ -1,5 +1,5 @@
 ---
-title: "Decision Trees Assignment"
+title: "Capstone Project"
 author: "Abed, Nevin, and Heshan"
 date: "2025-04-09"
 output:
@@ -39,6 +39,7 @@ using("xgboost") # Extreme Gradient boosting
 using("imbalance") # Oversampling
 using("ROSE") # Synthetic generation of new data to rebalance
 using("VIM")
+using("smotefamily")
 
 ```
 
@@ -74,6 +75,15 @@ colnames(data)[1:42] <- c(
 ```{r}
 as.data.frame(table(data$class))
 ```
+
+```{r}
+# Remove all classes with frequency <= 54
+class_counts <- table(data$class)
+rare_classes <- names(class_counts[class_counts <= 54])
+data <- data[!data$class %in% rare_classes]
+```
+
+
 ```{r}
 any(is.na(data)) # 
 colSums(is.na(data)) #
@@ -93,21 +103,13 @@ nrow(data)
 data <- data[!duplicated(data), ]
 
 ```
-```{r}
 
-#data.frame(names(data))
-
-```
 
 ```{r}
 data$class <- as.factor(data$class)
 data$protocol_type <- as.factor(data$protocol_type)
 data$service <- as.factor(data$service)
 data$flag <- as.factor(data$flag)
-
-
-
-
 ```
 
 Finding no usefullness to samples with empty class, we decided remove them.
@@ -119,14 +121,35 @@ data <- data[data$class != '']
 
 
 ```{r}
-
 #imputing:
 for (j in names(data)) {
   if(is.numeric(data[[j]])) {
-    data[is.na(get(j)), (j) := median(data[[j]], na.rm = TRUE)]}} # fucking median imputation values is done now 
+    data[is.na(get(j)), (j) := median(data[[j]], na.rm = TRUE)]}} # median imputation values is done now 
 
 nrow(data) # 399668 after removing duplicates
 #View(data)
+```
+
+Removing outliers:
+Can't remove it right now because the target detection is not binary, but about 26 classes.
+The following chunk is disabled for "run above" button
+```{r, include=FALSE}
+# removing outliers:
+training_without_outliers <- copy(data)
+numeric_cols <- names(data)[sapply(data, is.numeric)]
+for(i in numeric_cols) { 
+  for(j in unique(data$class)) {
+    values <- data[class == j, get(i)]
+    Q1 <- quantile(values, 0.25)
+    Q3 <- quantile(values, 0.75)
+    IQR <- Q3 - Q1
+    lower_bound <- Q1 - 1.5 * IQR
+    upper_bound <- Q3 + 1.5 * IQR
+    training_without_outliers <- training_without_outliers[!(
+      class == j & (get(i) < lower_bound | get(i) > upper_bound))]}}
+
+nrow(training_without_outliers)/nrow(data)
+# 0.4350536
 ```
 
 
@@ -179,19 +202,13 @@ empty_cells_df <- data.frame(
   Empty_Cells = empty_cells,
   Percentage = empty_cells_percentage
 )
-print(empty_cells_df)
-
-
-```
-```{r}
-
 # Sort by percentage of empty cells
 empty_cells_df <- empty_cells_df[order(-empty_cells_df$Percentage), ]
 print(empty_cells_df)
 
 
-```
 
+```
 
 ```{r}
 length(unique(data$flag))
@@ -199,11 +216,11 @@ length(unique(data$service))
 length(unique(data$protocol_type))
 ```
 > length(unique(data$flag))
-[1] 13
+[1] 12
 > length(unique(data$service))
-[1] 68
+[1] 67
 > length(unique(data$protocol_type))
-[1] 5
+[1] 4
 
 
 ```{r}
@@ -224,163 +241,354 @@ View(unique_values_df)
 ```
 
 
+## Handling Class Imbalance
+```{r}
+# Set a balanced target for each class
+target_samples <- 2000  # We'll aim for 2000 samples per class
 
-Random Forest Model + Comparing Training vs Testing
+# Create a balanced dataset using both undersampling and SMOTE
+balanced_data <- data.table()
 
-```{r, include=FALSE}}
+# First, undersample the majority classes
+for (cls in unique(data$class[data$class != ""])) {
+  class_data <- data[class == cls]
+  n_samples <- nrow(class_data)
+  
+  if (n_samples > target_samples) {
+    # Undersample the majority classes
+    set.seed(123)  # For reproducibility
+    sampled_indices <- sample(1:n_samples, target_samples)
+    balanced_class_data <- class_data[sampled_indices]
+    balanced_data <- rbind(balanced_data, balanced_class_data)
+  } else {
+    # Keep all samples from minority classes
+    balanced_data <- rbind(balanced_data, class_data)
+  }
+}
 
-# Split data into training and testing sets
+# Now handle the minority classes using SMOTE
+# First convert to data.frame (SMOTE functions expect data.frames)
+balanced_df <- as.data.frame(balanced_data)
+
+# We need to convert factor variables to numeric for SMOTE
+# Store original factor columns and their levels
+factor_cols <- names(balanced_df)[sapply(balanced_df, is.factor)]
+factor_levels <- lapply(balanced_df[, factor_cols, drop = FALSE], levels)
+
+# Convert factors to numeric
+for (col in factor_cols) {
+  balanced_df[[col]] <- as.numeric(balanced_df[[col]])
+}
+
+# Apply SMOTE to oversample minority classes
+set.seed(123)
+
+# Create a binary classifier for each minority class
+for (cls in unique(balanced_data$class[balanced_data$class != ""])) {
+  class_count <- sum(balanced_data$class == cls)
+  
+  if (class_count < target_samples && class_count > 0) {
+    # Create a binary classification problem for this class
+    temp_df <- balanced_df
+    temp_df$target <- ifelse(temp_df$class == as.numeric(factor(cls)), 1, 0)
+    
+    # Count samples in this class
+    n_minority <- sum(temp_df$target == 1)
+    
+    if (n_minority >= 5) {  # SMOTE needs at least a few samples to work with
+      # Determine how many synthetic samples to create
+      n_synthetic <- target_samples - n_minority
+      
+      # Apply SMOTE with dup_size parameter (ratio of synthetic to original samples)
+      dup_size <- ceiling(n_synthetic / n_minority)
+      
+      # Select only the rows for this class to apply SMOTE
+      minority_data <- temp_df[temp_df$target == 1, ]
+      
+      # Only proceed if we have enough samples
+      if (nrow(minority_data) >= 5) {
+        # Create synthetic samples using SMOTE
+        smote_result <- try(SMOTE(
+          X = minority_data[, !names(minority_data) %in% c("target", "class")],
+          target = minority_data$target,
+          K = min(5, nrow(minority_data) - 1),  # Use fewer neighbors if needed
+          dup_size = dup_size
+        ), silent = TRUE)
+        
+        if (!inherits(smote_result, "try-error")) {
+          # Extract the synthetic samples
+          synthetic_samples <- smote_result$syn_data
+          
+          # Add back the class column
+          synthetic_samples$class <- as.numeric(factor(cls))
+          
+          # Remove the target column if it exists
+          if ("target" %in% names(synthetic_samples)) {
+            synthetic_samples$target <- NULL
+          }
+          
+          # Limit the number of synthetic samples to what we need
+          if (nrow(synthetic_samples) > n_synthetic) {
+            synthetic_samples <- synthetic_samples[1:n_synthetic, ]
+          }
+          
+          # Add the synthetic samples to our balanced dataframe
+          if (nrow(synthetic_samples) > 0) {
+            balanced_df <- rbind(balanced_df[balanced_df$class != as.numeric(factor(cls)), ],
+                                rbind(balanced_df[balanced_df$class == as.numeric(factor(cls)), ],
+                                     synthetic_samples))
+          }
+        }
+      }
+    }
+  }
+}
+
+# Remove the target column if it exists
+if ("target" %in% names(balanced_df)) {
+  balanced_df$target <- NULL
+}
+
+# Convert back to factors using the original levels
+for (col in factor_cols) {
+  balanced_df[[col]] <- factor(balanced_df[[col]], levels = 1:length(factor_levels[[col]]), 
+                              labels = factor_levels[[col]])
+}
+
+# Convert back to data.table
+balanced_data <- as.data.table(balanced_df)
+
+# Check the new class distribution
+print("Balanced class distribution:")
+balanced_class_table <- as.data.frame(table(balanced_data$class))
+print(balanced_class_table)
+
+# Verify the total number of samples
+cat("Original dataset size:", nrow(data), "\n")
+cat("Balanced dataset size:", nrow(balanced_data), "\n")
+
+# Alternative approach: Using simple random oversampling for smaller classes
+# This is a simpler approach that might work better in your case
+
+# Create a new data.table for the simpler approach
+balanced_data_simple <- data.table()
+
+set.seed(123)  # For reproducibility
+
+for (cls in unique(data$class[data$class != ""])) {
+  class_data <- data[class == cls]
+  n_samples <- nrow(class_data)
+  
+  if (n_samples > target_samples) {
+    # Undersample the majority classes
+    sampled_indices <- sample(1:n_samples, target_samples)
+    balanced_class_data <- class_data[sampled_indices]
+    balanced_data_simple <- rbind(balanced_data_simple, balanced_class_data)
+  } else if (n_samples > 0 && n_samples < target_samples) {
+    # Random oversampling with replacement for minority classes
+    oversampled_indices <- sample(1:n_samples, target_samples, replace = TRUE)
+    balanced_class_data <- class_data[oversampled_indices]
+    balanced_data_simple <- rbind(balanced_data_simple, balanced_class_data)
+  } else if (n_samples == target_samples) {
+    # Keep as is if already at target
+    balanced_data_simple <- rbind(balanced_data_simple, class_data)
+  }
+}
+
+# Check the new class distribution using the simple approach
+print("Balanced class distribution (simple approach):")
+balanced_class_table_simple <- as.data.frame(table(balanced_data_simple$class))
+print(balanced_class_table_simple)
+
+# Verify the total number of samples
+cat("Balanced dataset size (simple approach):", nrow(balanced_data_simple), "\n")
+
+# Use the simpler balanced dataset for further modeling
+balanced_data <- balanced_data_simple
+```
+
+Before Balancing:
+
+              Var1   Freq
+1                       0
+2         b'back.'   2148
+3      b'ipsweep.'   1221
+4      b'neptune.' 104990
+5         b'nmap.'    232
+6       b'normal.'  95611
+7          b'pod.'    255
+8    b'portsweep.'    989
+9        b'satan.'   1536
+10       b'smurf.' 154486
+11    b'teardrop.'    966
+12 b'warezclient.'    995
+
+
+
+After Balancing:
+
+              Var1 Freq
+1                     0
+2         b'back.' 2000
+3      b'ipsweep.' 2000
+4      b'neptune.' 2000
+5         b'nmap.' 2000
+6       b'normal.' 2000
+7          b'pod.' 2000
+8    b'portsweep.' 2000
+9        b'satan.' 2000
+10       b'smurf.' 2000
+11    b'teardrop.' 2000
+12 b'warezclient.' 2000
+
+
+```{r}
+# Before balancing
+before_plot <- ggplot(as.data.frame(table(data$class)), aes(x = reorder(Var1, -Freq), y = Freq)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Class Distribution Before Balancing",
+       x = "Class", y = "Frequency")
+
+# After balancing
+after_plot <- ggplot(balanced_class_table_simple, aes(x = reorder(Var1, -Freq), y = Freq)) +
+  geom_bar(stat = "identity", fill = "forestgreen") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Class Distribution After Balancing",
+       x = "Class", y = "Frequency")
+
+before_plot
+after_plot
+```
+
+
+
+
+## Preparing splits + Balancing data 
+
+```{r}
+
+# Step 1: Split BEFORE balancing
+# ------------------------------
 set.seed(42)
 train_index <- createDataPartition(data$class, p = 0.7, list = FALSE)
 train_data <- data[train_index]
 test_data <- data[-train_index]
 
-# Train Random Forest model with ranger
-model_rf <- ranger(
-  class ~ ., 
-  data = train_data,
-  importance = 'impurity',  # For feature importance
-  num.trees = 100,          # Start with fewer trees for speed
-  mtry = floor(sqrt(ncol(data) - 1)), # Default RF formula
-  min.node.size = 5,        # Smaller for better precision
-  verbose = TRUE            # Track progress
-)
+# ------------------------------
+# Step 2: Apply your balancing code to train_data
+# ------------------------------
+# Set a balanced target for each class
+target_samples <- 2000  # We'll aim for 2000 samples per class
 
-# Making predictions
-pred_rf <- predict(model_rf, data = test_data)
+# Create a balanced dataset using both undersampling and oversampling (simpler path)
+balanced_data_simple <- data.table()
 
+set.seed(123)  # For reproducibility
 
-# NOTE: I GET ERROR IN CONFUSION MATRIX
-# DOESNT WORK: Error in `[.default`(data, , pos) : subscript out of bounds
-# confusionMatrix(pred_rf$predictions, test_data$class)
-
-
-#SO WE USE THIS INSTEAD!
-# Alternative method to evaluate predictions
-table_result <- table(Predicted = pred_rf$predictions, Actual = test_data$class)
-print(table_result)
-
-# Calculate accuracy manually
-# Predict on training data
-train_pred_rf <- predict(model_rf, data = train_data)
-
-# Create confusion matrix for training data
-train_table_result <- table(Predicted = train_pred_rf$predictions, Actual = train_data$class)
-
-# Calculate training accuracy manually
-train_accuracy <- sum(diag(train_table_result)) / sum(train_table_result)
-
-
-# Compare training and testing accuracy
-print(paste("Training Accuracy:", round(train_accuracy, 4)))
-print(paste("Testing Accuracy:", round(accuracy, 4)))
-
-# Get feature importance
-importance_df <- data.frame(
-  Feature = names(model_rf$variable.importance),
-  Importance = model_rf$variable.importance
-)
-importance_df <- importance_df[order(-importance_df$Importance), ]
-head(importance_df, 10)  # Show top 10 features
-
-
-
-```
-Accuracy on testing 0.9993"
-
-
-
-
-Metric Table
-
-```{r}
-# Calculate per-class precision, recall, and F1 score
-metrics_by_class <- data.frame(
-  Class = colnames(table_result),
-  Precision = diag(table_result) / colSums(table_result),
-  Recall = diag(table_result) / rowSums(table_result),
-  Support = rowSums(table_result)
-)
-
-# Add F1 score
-metrics_by_class$F1 <- 2 * (metrics_by_class$Precision * metrics_by_class$Recall) / 
-                        (metrics_by_class$Precision + metrics_by_class$Recall)
-
-# Replace NaN values with 0
-metrics_by_class[is.na(metrics_by_class)] <- 0
-
-# Print the metrics
-print(metrics_by_class[order(-metrics_by_class$Support),])
-
-# Calculate macro averages
-macro_avg <- data.frame(
-  Class = "macro_avg",
-  Precision = mean(metrics_by_class$Precision, na.rm = TRUE),
-  Recall = mean(metrics_by_class$Recall, na.rm = TRUE),
-  Support = sum(metrics_by_class$Support),
-  F1 = mean(metrics_by_class$F1, na.rm = TRUE)
-)
-
-# Weighted average (weight by support)
-weighted_avg <- data.frame(
-  Class = "weighted_avg",
-  Precision = sum(metrics_by_class$Precision * metrics_by_class$Support, na.rm = TRUE) / 
-              sum(metrics_by_class$Support, na.rm = TRUE),
-  Recall = sum(metrics_by_class$Recall * metrics_by_class$Support, na.rm = TRUE) / 
-           sum(metrics_by_class$Support, na.rm = TRUE),
-  Support = sum(metrics_by_class$Support),
-  F1 = sum(metrics_by_class$F1 * metrics_by_class$Support, na.rm = TRUE) / 
-        sum(metrics_by_class$Support, na.rm = TRUE)
-)
-
-# Combine all metrics
-all_metrics <- rbind(metrics_by_class, macro_avg, weighted_avg)
-print(all_metrics)
-
-# Visualize feature importance
-using("ggplot2")
-ggplot(importance_df[1:20,], aes(x = reorder(Feature, Importance), y = Importance)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  coord_flip() +
-  theme_minimal() +
-  labs(title = "Top 20 Features by Importance", 
-       x = "Features", 
-       y = "Importance Score")
-
-```
-
-
-k-fold cross validation
-
-```{r}
-# K-fold cross-validation
-k <- 5
-folds <- createFolds(data$class, k = k)
-cv_results <- data.frame()
-
-for (i in 1:k) {
-  # Split data
-  test_indices <- folds[[i]]
-  cv_train <- data[-test_indices]
-  cv_test <- data[test_indices]
+for (cls in unique(train_data$class[train_data$class != ""])) {
+  class_data <- train_data[class == cls]
+  n_samples <- nrow(class_data)
   
-  # Train model
-  cv_model <- ranger(class ~ ., data = cv_train, num.trees = 100)
-  
-  # Predict
-  cv_pred <- predict(cv_model, data = cv_test)
-  cv_acc <- sum(cv_pred$predictions == cv_test$class) / nrow(cv_test)
-  
-  # Store results
-  cv_results <- rbind(cv_results, data.frame(Fold = i, Accuracy = cv_acc))
+  if (n_samples > target_samples) {
+    sampled_indices <- sample(1:n_samples, target_samples)
+    balanced_class_data <- class_data[sampled_indices]
+    balanced_data_simple <- rbind(balanced_data_simple, balanced_class_data)
+  } else if (n_samples > 0 && n_samples < target_samples) {
+    oversampled_indices <- sample(1:n_samples, target_samples, replace = TRUE)
+    balanced_class_data <- class_data[oversampled_indices]
+    balanced_data_simple <- rbind(balanced_data_simple, balanced_class_data)
+  } else if (n_samples == target_samples) {
+    balanced_data_simple <- rbind(balanced_data_simple, class_data)
+  }
 }
 
-# Calculate mean and standard deviation
-mean_acc <- mean(cv_results$Accuracy)
-sd_acc <- sd(cv_results$Accuracy)
-print(paste("Mean CV Accuracy:", round(mean_acc, 4), "±", round(sd_acc, 4)))
+# Use this as training data
+balanced_data <- balanced_data_simple
 
+# ------------------------------
+# Step 3: Check class distributions
+# ------------------------------
+cat("Balanced training set class distribution:\n")
+print(as.data.frame(table(balanced_data$class)))
+
+cat("Unbalanced test set class distribution:\n")
+print(as.data.frame(table(test_data$class)))
 ```
 
-We got 0.999 both on training/testing AND on the validation, which is incredibly good
+## Random Forest + Evaluation
+
+```{r}
+# Train the Random Forest
+# ------------------------------
+print("Training Random Forest model...")
+model_rf <- ranger(
+  formula = class ~ ., 
+  data = balanced_data,
+  importance = 'impurity',
+  num.trees = 500,
+  mtry = floor(sqrt(ncol(balanced_data) - 1)),
+  min.node.size = 5,
+  verbose = TRUE
+)
+
+# ------------------------------
+# Evaluate on test set
+# ------------------------------
+pred_rf <- predict(model_rf, data = test_data)
+predictions <- pred_rf$predictions
+
+conf_matrix <- table(Predicted = predictions, Actual = test_data$class)
+print("Confusion Matrix:")
+print(conf_matrix)
+
+accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
+print(paste("Overall Accuracy:", round(accuracy, 4)))
+
+# ------------------------------
+# Per-class metrics
+# ------------------------------
+calculate_class_metrics <- function(conf_mat) {
+  n_classes <- nrow(conf_mat)
+  class_names <- rownames(conf_mat)
+  
+  metrics <- data.frame(
+    Class = class_names,
+    Precision = numeric(n_classes),
+    Recall = numeric(n_classes),
+    F1_Score = numeric(n_classes),
+    Support = numeric(n_classes)
+  )
+  
+  for (i in 1:n_classes) {
+    tp <- conf_mat[i, i]
+    fp <- sum(conf_mat[, i]) - tp
+    fn <- sum(conf_mat[i, ]) - tp
+    precision <- if(tp + fp > 0) tp / (tp + fp) else 0
+    recall <- if(tp + fn > 0) tp / (tp + fn) else 0
+    f1 <- if(precision + recall > 0) 2 * precision * recall / (precision + recall) else 0
+    
+    metrics$Precision[i] <- precision
+    metrics$Recall[i] <- recall
+    metrics$F1_Score[i] <- f1
+    metrics$Support[i] <- sum(conf_mat[i, ])
+  }
+  
+  return(metrics)
+}
+
+class_metrics <- calculate_class_metrics(conf_matrix)
+print("Per-class metrics:")
+print(class_metrics)
+
+macro_avg <- colMeans(class_metrics[, c("Precision", "Recall", "F1_Score")])
+print("Macro Average metrics:")
+print(macro_avg)
+```
+
+Our Random Forest model demonstrates outstanding performance on the test set, achieving an overall accuracy of 99.75%, indicating that the vast majority of instances were correctly classified. The macro-averaged F1-score of 0.8774 further supports the model’s strong ability to generalize across all classes, despite varying support levels. Classes such as b'neptune.', b'smurf.', and b'teardrop.' show near-perfect classification results, with precision and recall values close to or exactly 1.0, suggesting that the model effectively distinguishes these frequent attack types with high reliability. Other classes like b'normal.', b'pod.', and b'satan.' also exhibit very strong performance, with F1-scores above 0.97. A notable exception is the class b'warezclient.', which has a lower recall of 0.63 despite high precision (0.997), indicating the model struggles to capture all true instances of this class—possibly due to its overlap with other behaviors or lower representation. The class b'nmap.' also shows slightly lower recall at 0.86, reflecting moderate difficulty in detecting this specific attack. Finally, one row corresponding to a blank or unrecognized class (Class = "") contains zero instances, which is correctly reflected by a lack of metrics. Overall, the model maintains a good balance between precision and recall across most classes, and the high macro-average values indicate that performance is not dominated by only the most common categories.
+
+
 
