@@ -49,17 +49,14 @@ data <- fread("data.csv")
 
 ```
 
-## EDA and Preprocessing
-### View the data and its structure
+
 
 ```{r}
 str(data)
 View(data)
+
+
 ```
-
-We can see that our data has 41 features and 1 target variable. The target variable is the last column, and it is a categorical variable with 25 classes. The data consists of over half a million observations (records). The first column is the duration of the connection in seconds, and the rest are various features related to the connection. _Note_ that class "Normal" refers to nonanomalous connections. There are no binary features. There are a few categorical features, which we need to factor at some point.
-
-### Renaming the columns:
 
 ```{r}
 colnames(data)[1:42] <- c(
@@ -75,53 +72,39 @@ colnames(data)[1:42] <- c(
 )
 
 ```
-Since our given data set was unlabeled, we named all the features with accordance to the reference paper.
-
-
-### Checking for class distribution
-
 ```{r}
-freq_table <- as.data.frame(table(data$class))
-
-# Sort by frequency (i.e., the 'Freq' column)
-sorted_freq_table <- freq_table[order(-freq_table$Freq), ]
-
-# View result
-print(sorted_freq_table)
+as.data.frame(table(data$class))
 ```
 
-* Having analysed the target distribution, we see a significant difference in the number of samples for each class. This most likely will be handled to avoid data leakage. The difference between the most frequent max class and min class is about 154,000 samples. 
-* Another important point we spotted is that there is a nameless class. We found no usefulness for it and therefore we will remove it.
-
-### Remove all classes with frequency <= 54
 ```{r}
+# Remove all classes with frequency <= 54
 class_counts <- table(data$class)
 rare_classes <- names(class_counts[class_counts <= 54])
 data <- data[!data$class %in% rare_classes]
 ```
-Since we observed classes with frequency less than 100, we decided to remove them as they caused unavoidable data leakage. 
+
 
 ```{r}
-cat("are there any 'not available' data?", any(is.na(data))) # 
-cat("In which columns those missing data exist:", colSums(is.na(data))) #
-cat("Number of complete cases:", sum(complete.cases(data)))
+any(is.na(data)) # 
+colSums(is.na(data)) #
+sum(complete.cases(data))
 # 22469
 nrow(data)
 # 528603
 
 ```
 
-### checking for duplicates:
 
 ```{r}
+# checking for duplicates:
 #sum(duplicated(data)) # 128935
 #nrow(data) - sum(duplicated(data))# 399668
 #remove duplicates
 data <- data[!duplicated(data), ]
-```
-The sum of duplicates is 128935, meaning our new data will have 399668 samples. 
 
-#### Factoring categorical variables
+```
+
+
 ```{r}
 data$class <- as.factor(data$class)
 data$protocol_type <- as.factor(data$protocol_type)
@@ -129,7 +112,6 @@ data$service <- as.factor(data$service)
 data$flag <- as.factor(data$flag)
 ```
 
-#### Remove samples with empty class
 Finding no usefullness to samples with empty class, we decided remove them.
 ```{r}
 data[data$class == "", ] |> head(10)
@@ -138,7 +120,6 @@ data <- data[data$class != '']
 ```
 
 
-#### Imputing missing values
 ```{r}
 #imputing:
 for (j in names(data)) {
@@ -148,11 +129,11 @@ for (j in names(data)) {
 nrow(data) # 399668 after removing duplicates
 #View(data)
 ```
-Median imputation values is done now. We didn't use mean because median would be less sensitive to outliers.
 
-#### Removing outliers (EDA, but not practiced)
+Removing outliers:
 Can't remove it right now because the target detection is not binary, but about 26 classes.
-```{r}
+The following chunk is disabled for "run above" button
+```{r, include=FALSE}
 # removing outliers:
 training_without_outliers <- copy(data)
 numeric_cols <- names(data)[sapply(data, is.numeric)]
@@ -170,9 +151,9 @@ for(i in numeric_cols) {
 nrow(training_without_outliers)/nrow(data)
 # 0.4350536
 ```
-We kept the option of having a dataset without outliers for future use, but we decided to use the original dataset with outliers as we found usefulness and value in the outliers for detecting certain types of attacks. 
 
-### Handling missing char/factor values
+
+Handling missing char/factor values:
 ```{r}
 # Count empty cells in each column
 empty_cells <- sapply(data, function(x) sum(x == ""))
@@ -182,7 +163,7 @@ View(as.data.frame(empty_cells))
 
 
 
-### Checking for overlaping values (EDA, but not proccessed):
+Checking for overlaping values:
 
 ```{r}
 # Count rows with missing values in each combination of factors
@@ -229,17 +210,17 @@ print(empty_cells_df)
 
 ```
 
-#### Potential categorizing the whole dataset according to flag, service and protocol_type:
 ```{r}
 length(unique(data$flag))
 length(unique(data$service))
 length(unique(data$protocol_type))
 ```
-The number of unique values in each feature:
-length of flag: 12
-length of service: 67
-length of protocol_type: 4
-
+> length(unique(data$flag))
+[1] 12
+> length(unique(data$service))
+[1] 67
+> length(unique(data$protocol_type))
+[1] 4
 
 
 ```{r}
@@ -261,16 +242,12 @@ View(unique_values_df)
 
 
 ## Handling Class Imbalance
-### Setting a balanced target for each class
-
 ```{r}
-target_samples <- 2000  # 
-```
-We'll aim for 2000 samples per class
+# Set a balanced target for each class
+target_samples <- 2000  # We'll aim for 2000 samples per class
 
-The following is to create a balanced dataset using both undersampling and oversmampling using SMOTE
-```{r}
-balanced_data <- data.table()
+# Create a balanced dataset using both undersampling and SMOTE
+balanced_data <- data.table()       
 
 # First, undersample the majority classes
 for (cls in unique(data$class[data$class != ""])) {
@@ -288,11 +265,8 @@ for (cls in unique(data$class[data$class != ""])) {
     balanced_data <- rbind(balanced_data, class_data)
   }
 }
-```
-Note, the oversampling technique is not unitlized by duplicating minorities, but by creating synthetic samples using SMOTE.
 
-#### Now handle the minority classes using SMOTE
-```{r}
+# Now handle the minority classes using SMOTE
 # First convert to data.frame (SMOTE functions expect data.frames)
 balanced_df <- as.data.frame(balanced_data)
 
@@ -431,9 +405,6 @@ cat("Balanced dataset size (simple approach):", nrow(balanced_data_simple), "\n"
 
 # Use the simpler balanced dataset for further modeling
 balanced_data <- balanced_data_simple
-#### removing empty class:
-balanced_data$class <- droplevels(balanced_data$class)
-#table(balanced_data$class)
 ```
 
 Before Balancing:
@@ -547,6 +518,89 @@ cat("Unbalanced test set class distribution:\n")
 print(as.data.frame(table(test_data$class)))
 ```
 
+## Feature importance
+```{r}
+# Create a copy of the balanced data
+feature_selection_data <- copy(balanced_data)
+
+# Add a random feature as a baseline for importance comparison
+set.seed(123)
+feature_selection_data[, random := runif(nrow(feature_selection_data), 1, 100)]
+
+# Train a quick random forest to get feature importance
+fs_model <- ranger(
+  formula = class ~ ., 
+  data = feature_selection_data,
+  importance = 'impurity',
+  num.trees = 100,  # Using fewer trees for quicker analysis
+  mtry = floor(sqrt(ncol(feature_selection_data) - 1)),
+  verbose = TRUE
+)
+
+# Extract feature importance
+imp <- importance(fs_model)
+imp_df <- data.frame(Feature = names(imp), Importance = imp)
+
+# Sort by importance
+imp_df <- imp_df[order(-imp_df$Importance), ]
+
+# Create interactive bar plot of feature importance
+importance_plot <- plot_ly(data = imp_df, 
+                          x = ~reorder(Feature, Importance), 
+                          y = ~Importance, 
+                          type = "bar",
+                          marker = list(color = "steelblue")) %>%
+  layout(title = "Feature Importance for Network Intrusion Detection",
+         xaxis = list(title = "Features", categoryorder = "total descending"),
+         yaxis = list(title = "Importance Score"))
+
+# Display the plot
+importance_plot
+```
+
+```{r}
+## Feature Selection Implementation ----
+print("Implementing feature selection based on importance")
+
+# Get feature names in order of importance (already in imp_df)
+
+
+
+# Select features with importance above certain threshold
+# From the plot, we can see importance drops significantly after around 400-500
+importance_threshold <- 400
+selected_features_threshold <- as.character(imp_df$Feature[imp_df$Importance > importance_threshold])
+cat("\nFeatures with importance > ", importance_threshold, ":\n")
+print(selected_features_threshold)
+
+
+selected_features <- selected_features_threshold
+
+# Create a new dataset with only selected features plus the class column
+print(paste("Creating new dataset with", length(selected_features), "selected features"))
+balanced_data_selected <- balanced_data[, c(selected_features, "class"), with = FALSE]
+
+# Verify the dimensions
+cat("Original dataset dimensions:", dim(balanced_data)[1], "rows and", dim(balanced_data)[2], "columns\n")
+cat("Selected dataset dimensions:", dim(balanced_data_selected)[1], "rows and", dim(balanced_data_selected)[2], "columns\n")
+
+# Also prepare test data with same features for consistent evaluation
+test_data_selected <- test_data[, c(selected_features, "class"), with = FALSE]
+
+# Update our dataset references to use the selected features
+# Comment this line if you want to keep using all features
+balanced_data <- balanced_data_selected
+test_data <- test_data_selected
+
+
+```
+
+
+Based on feature selection, we keep the following features and train our model accordingly. We decided to select the treshold for importance at 400 as seen in the plot.
+ "src_bytes"       "wrong_fragt"     "srv_count"       "count"           "service"         "h_srv_d_h_rate"  "same_srv_rate"   "h_src_port_rate" "logged_in"       "host_srv_count"
+"rerror_rate"     "dst_bytes"       "protocol_type"   "nu_comprom"      "diff_srv_rate"   "host_count"      "flag"
+
+
 ## Random Forest + Evaluation
 
 ```{r}
@@ -618,7 +672,6 @@ print(macro_avg)
 ```
 
 Our Random Forest model demonstrates outstanding performance on the test set, achieving an overall accuracy of 99.75%, indicating that the vast majority of instances were correctly classified. The macro-averaged F1-score of 0.8774 further supports the model’s strong ability to generalize across all classes, despite varying support levels. Classes such as b'neptune.', b'smurf.', and b'teardrop.' show near-perfect classification results, with precision and recall values close to or exactly 1.0, suggesting that the model effectively distinguishes these frequent attack types with high reliability. Other classes like b'normal.', b'pod.', and b'satan.' also exhibit very strong performance, with F1-scores above 0.97. A notable exception is the class b'warezclient.', which has a lower recall of 0.63 despite high precision (0.997), indicating the model struggles to capture all true instances of this class—possibly due to its overlap with other behaviors or lower representation. The class b'nmap.' also shows slightly lower recall at 0.86, reflecting moderate difficulty in detecting this specific attack. Finally, one row corresponding to a blank or unrecognized class (Class = "") contains zero instances, which is correctly reflected by a lack of metrics. Overall, the model maintains a good balance between precision and recall across most classes, and the high macro-average values indicate that performance is not dominated by only the most common categories.
-
 
 
 
