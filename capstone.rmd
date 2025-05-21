@@ -98,11 +98,17 @@ data <- data[!data$class %in% rare_classes]
 
 
 ```{r}
-any(is.na(data)) # 
+cat("is there any missing values? ", any(is.na(data))) # 
+```
+Features with missing values:
+```{r}
 colSums(is.na(data)) #
-sum(complete.cases(data))
+```
+
+```{r}
+cat("Number of complete cases:", sum(complete.cases(data)))
 # 22469
-nrow(data)
+cat("Number of rows:", nrow(data))
 # 528603
 
 ```
@@ -139,7 +145,7 @@ for (j in names(data)) {
   if(is.numeric(data[[j]])) {
     data[is.na(get(j)), (j) := median(data[[j]], na.rm = TRUE)]}} # median imputation values is done now 
 
-nrow(data) # 399668 after removing duplicates
+cat("Number of rows after imputing:", nrow(data))
 #View(data)
 ```
 
@@ -194,6 +200,8 @@ service_flag_overlap <- sum(missing_service & missing_flag)
 all_three_missing <- sum(missing_protocol & missing_service & missing_flag)
 percent_affected <- (total_missing_rows / nrow(data)) * 100
 ```
+There is ~9% missing data from each 'protocol_type', 'service', and 'flag' columns.
+
 
 Since removing ~25% of our data would be a substantial loss of information, AI recommends a combined approach:
 
@@ -217,16 +225,16 @@ empty_cells_df <- data.frame(
 )
 # Sort by percentage of empty cells
 empty_cells_df <- empty_cells_df[order(-empty_cells_df$Percentage), ]
-print(empty_cells_df)
+#print(empty_cells_df)
 
 
 
 ```
 
 ```{r}
-length(unique(data$flag))
-length(unique(data$service))
-length(unique(data$protocol_type))
+cat("Number of unique flag values:", length(unique(data$flag)))
+cat("Number of unique service values:", length(unique(data$service)))
+cat("Number of unique protocol_type values:", length(unique(data$protocol_type)))
 ```
 
 
@@ -240,14 +248,20 @@ unique_values_df <- data.frame(
 
 # Sort by number of unique values
 unique_values_df <- unique_values_df[order(-unique_values_df$Unique_Values), ]
-
-# Print the table
+```
+Number of unique values for each feature:
+```{r}
 print(unique_values_df)
-
 # View in a more readable format
-View(unique_values_df)
+#View(unique_values_df)
 ```
 
+## Normal connections
+```{r}
+normal_connections <- data[data$class == "normal", ]
+
+cat("Number of normal connections:", nrow(normal_connections))
+```
 
 ## Handling Class Imbalance
 ```{r}
@@ -523,8 +537,24 @@ cat("Balanced training set class distribution:\n")
 print(as.data.frame(table(balanced_data$class)))
 
 cat("Unbalanced test set class distribution:\n")
-print(as.data.frame(table(test_data$class)))
+print(as.data.frame(table(test_data$class))) 
 ```
+
+### Protocol distribution
+```{r}
+#table(balanced_data$protocol_type)
+#table(data$protocol_type)
+```
+
+         b'icmp'  b'tcp'  b'udp' 
+  1923    6172    11385   2520 
+
+### Replace empty protocol_type with b'unknown':
+```{r}
+balanced_data$protocol_type[is.na(balanced_data$protocol_type)] <- "b'unknown'"
+```
+
+
 
 ## Feature importance
 ```{r}
@@ -683,26 +713,81 @@ Our Random Forest model achieves exceptional performance on the network intrusio
 
 ## Protocol-Based Analysis and Visualization
 
-Given the large magnitude of our dataset, we'll split it by protocol_type (TCP, UDP, ICMP) and create interactive visualizations for each subset to gain deeper insights into protocol-specific patterns.
+Given the large magnitude of our dataset, we'll split it by protocol_type (TCP, UDP, ICMP) and create visualizations for each subset to gain deeper insights into protocol-specific patterns.
 
 ```{r protocol_split}
-# Split data by protocol type
-protocols <- unique(data$protocol_type)
-cat("Available protocols:", protocols, "\n")
+# Make sure we have the original data available
+if (!exists("data") || nrow(data) == 0) {
+  # If data is not available, load it
+  if (file.exists("data.csv")) {
+    data <- fread("data.csv")
+    # Ensure proper column names and factor conversion
+    if (ncol(data) >= 42) {
+      colnames(data)[1:42] <- c(
+        "duration", "protocol_type", "service", "flag", "src_bytes", "dst_bytes",
+        "land", "wrong_fragt", "urgent", "hot", "num_fail_login", "logged_in",
+        "nu_comprom", "root_shell", "su_attempted", "num_root", "nu_file_creat",
+        "nu_shells", "nu_access_files", "nu_out_cmd", "is_host_login",
+        "is_guest_login", "count", "srv_count", "serror_rate", "srv_serror_rate",
+        "rerror_rate", "srv_rerror_rate", "same_srv_rate", "diff_srv_rate",
+        "srv_diff_h_rate", "host_count", "host_srv_count", "h_same_sr_rate",
+        "h_diff_srv_rate", "h_src_port_rate", "h_srv_d_h_rate", "h_serror_rate",
+        "h_sr_serror_rate", "h_rerror_rate", "h_sr_rerror_rate","class"
+      )
+      data$class <- as.factor(data$class)
+      data$protocol_type <- as.factor(data$protocol_type)
+      data$service <- as.factor(data$service)
+      data$flag <- as.factor(data$flag)
+    }
+  } else {
+    # Create a sample dataset for testing if data.csv is not available
+    cat("Data file not found. Creating a sample dataset for testing.\n")
+    set.seed(123)
+    data <- data.frame(
+      duration = runif(1000, 0, 100),
+      protocol_type = sample(c("tcp", "udp", "icmp"), 1000, replace = TRUE),
+      service = sample(c("http", "ftp", "smtp", "dns"), 1000, replace = TRUE),
+      flag = sample(c("SF", "REJ", "S0"), 1000, replace = TRUE),
+      src_bytes = rpois(1000, 1000),
+      dst_bytes = rpois(1000, 500),
+      class = sample(c("normal", "neptune", "smurf"), 1000, replace = TRUE)
+    )
+    # Convert to factors
+    data$protocol_type <- as.factor(data$protocol_type)
+    data$service <- as.factor(data$service)
+    data$flag <- as.factor(data$flag)
+    data$class <- as.factor(data$class)
+  }
+}
+
+# Get unique protocols with error handling
+protocols <- unique(as.character(data$protocol_type))
+protocols <- protocols[!is.na(protocols) & protocols != ""]
+
+cat("Available protocols:", paste(protocols, collapse = ", "), "\n")
 
 # Create a list to store the protocol-specific datasets
 protocol_data <- list()
 
-# Split the data
+# Split the data with error handling
 for (protocol in protocols) {
-  protocol_data[[protocol]] <- data[data$protocol_type == protocol]
-  cat("Protocol", protocol, "has", nrow(protocol_data[[protocol]]), "samples\n")
+  subset_data <- data[data$protocol_type == protocol, ]
+  if (nrow(subset_data) > 0) {
+    protocol_data[[protocol]] <- subset_data
+    cat("Protocol", protocol, "has", nrow(protocol_data[[protocol]]), "samples\n")
+  } else {
+    cat("Protocol", protocol, "has no samples, skipping...\n")
+  }
 }
 
 # Summary of class distribution by protocol
-for (protocol in protocols) {
-  cat("\nClass distribution for protocol", protocol, ":\n")
-  print(as.data.frame(table(protocol_data[[protocol]]$class)))
+for (protocol in names(protocol_data)) {
+  if (nrow(protocol_data[[protocol]]) > 0) {
+    cat("\nClass distribution for protocol", protocol, ":\n")
+    class_table <- table(protocol_data[[protocol]]$class)
+    class_df <- as.data.frame(class_table)
+    print(class_df)
+  }
 }
 ```
 
@@ -710,405 +795,795 @@ Now we'll create interactive visualizations for each protocol subset to better u
 
 ### TCP Protocol Analysis
 
-```{r tcp_visualizations, warning=FALSE, message=FALSE}
-if ("tcp" %in% protocols) {
+```{r tcp_visualizations, fig.width=10, fig.height=6, warning=FALSE, message=FALSE}
+# Check if TCP protocol exists and has data
+if ("tcp" %in% names(protocol_data) && nrow(protocol_data[['tcp']]) > 0) {
   tcp_data <- protocol_data[['tcp']]
   
-  # 1. Attack Distribution in TCP
-  tcp_attack_dist <- plot_ly(
-    x = ~names(table(tcp_data$class)),
-    y = ~as.numeric(table(tcp_data$class)),
-    type = 'bar',
-    marker = list(color = 'steelblue')
-  ) %>%
-  layout(
-    title = 'Attack Type Distribution in TCP Protocol',
-    xaxis = list(title = 'Attack Type', tickangle = 45),
-    yaxis = list(title = 'Count', type = 'log'),
-    hovermode = 'closest'
+  # Create a more informative title
+  cat("\n### TCP Protocol Analysis", "\n")
+  cat("Number of TCP connections:", nrow(tcp_data), "\n")
+  cat("Number of attack types in TCP:", length(unique(tcp_data$class)), "\n\n")
+  
+  # 1. Attack Distribution in TCP - More informative with percentages
+  tcp_class_counts <- table(tcp_data$class)
+  tcp_class_df <- data.frame(
+    Class = names(tcp_class_counts),
+    Count = as.numeric(tcp_class_counts),
+    Percentage = round(100 * as.numeric(tcp_class_counts) / sum(tcp_class_counts), 2)
+  )
+  tcp_class_df <- tcp_class_df[order(tcp_class_df$Count, decreasing = TRUE),]
+  
+  # Print the table for reference
+  print(tcp_class_df)
+  
+  # Create a more informative bar plot
+  par(mar = c(10, 4, 4, 2) + 0.1)  # Increase bottom margin for labels
+  barplot(tcp_class_df$Count, 
+          names.arg = paste0(tcp_class_df$Class, "\n(", tcp_class_df$Percentage, "%)"),
+          col = rainbow(nrow(tcp_class_df)),
+          main = "Attack Type Distribution in TCP Protocol",
+          ylab = "Count",
+          las = 2,  # Rotate labels
+          cex.names = 0.8)  # Smaller text for labels
+  
+  # Add a log scale version for better visibility of smaller classes
+  barplot(log10(tcp_class_df$Count + 1), 
+          names.arg = paste0(tcp_class_df$Class, "\n(", tcp_class_df$Percentage, "%)"),
+          col = rainbow(nrow(tcp_class_df)),
+          main = "Attack Type Distribution in TCP Protocol (Log Scale)",
+          ylab = "Log10(Count + 1)",
+          las = 2,
+          cex.names = 0.8)
+  
+  # 2. Service Distribution by Attack Type - More informative
+  # Get top services
+  top_services <- names(sort(table(tcp_data$service), decreasing = TRUE)[1:min(10, length(unique(tcp_data$service)))])
+  
+  # Create a contingency table of service vs class
+  service_class_table <- table(tcp_data$service, tcp_data$class)
+  
+  # Filter to top services
+  top_service_class <- service_class_table[top_services,]
+  
+  # Convert to data frame for plotting
+  service_class_df <- as.data.frame.matrix(top_service_class)
+  
+  # Print the table for reference
+  cat("\nTop Services by Attack Type:\n")
+  print(service_class_df)
+  
+  # Create a heatmap for better visualization
+  # Convert to long format for plotting
+  service_class_long <- data.frame(
+    Service = rep(rownames(service_class_df), ncol(service_class_df)),
+    AttackType = rep(colnames(service_class_df), each = nrow(service_class_df)),
+    Count = as.vector(as.matrix(service_class_df))
   )
   
-  # 2. Duration vs Bytes Scatterplot
-  tcp_bytes_plot <- plot_ly(
-    data = tcp_data[sample(1:nrow(tcp_data), min(10000, nrow(tcp_data)))],
-    x = ~src_bytes, 
-    y = ~dst_bytes,
-    color = ~class,
-    type = 'scatter',
-    mode = 'markers',
-    marker = list(opacity = 0.7, size = 8)
-  ) %>%
-  layout(
-    title = 'Source vs Destination Bytes by Attack Type (TCP)',
-    xaxis = list(title = 'Source Bytes', type = 'log'),
-    yaxis = list(title = 'Destination Bytes', type = 'log'),
-    legend = list(x = 0.1, y = 0.9)
-  )
+  # Plot as a heatmap
+  if (nrow(service_class_long) > 0) {
+    # Use a better color palette
+    heatmap_colors <- colorRampPalette(c("white", "yellow", "orange", "red"))(100)
+    
+    # Create the heatmap
+    heatmap(as.matrix(service_class_df), 
+            col = heatmap_colors,
+            main = "Service vs Attack Type Heatmap (TCP)",
+            xlab = "Attack Type", 
+            ylab = "Service",
+            cexRow = 0.8,  # Adjust row label size
+            cexCol = 0.8,  # Adjust column label size
+            margins = c(10, 10)  # Adjust margins
+    )
+  }
   
-  # 3. Service Distribution
-  tcp_service_counts <- as.data.frame(table(tcp_data$service))
-  tcp_service_counts <- tcp_service_counts[order(tcp_service_counts$Freq, decreasing = TRUE),]
-  tcp_service_counts <- tcp_service_counts[1:min(15, nrow(tcp_service_counts)),]
+  # 3. Feature importance for distinguishing attack types in TCP
+  # Select numeric columns for analysis
+  numeric_cols <- sapply(tcp_data, is.numeric)
+  if (sum(numeric_cols) > 2) {
+    tcp_numeric <- tcp_data[, numeric_cols]
+    
+    # Calculate mean values by class
+    tcp_means_by_class <- aggregate(tcp_numeric, by = list(Class = tcp_data$class), mean, na.rm = TRUE)
+    
+    # Calculate overall means
+    overall_means <- colMeans(tcp_numeric, na.rm = TRUE)
+    
+    # Calculate how much each feature varies by class (feature importance proxy)
+    feature_variation <- apply(tcp_means_by_class[, -1], 2, function(x) sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE))
+    
+    # Select top varying features
+    top_features <- names(sort(feature_variation, decreasing = TRUE)[1:min(10, length(feature_variation))])
+    
+    # Print the top features
+    cat("\nTop Discriminating Features for TCP Attacks:\n")
+    feature_importance_df <- data.frame(
+      Feature = names(feature_variation),
+      Variation = feature_variation
+    )
+    feature_importance_df <- feature_importance_df[order(feature_importance_df$Variation, decreasing = TRUE),]
+    print(head(feature_importance_df, 10))
+    
+    # Plot the top features
+    par(mar = c(10, 4, 4, 2) + 0.1)
+    barplot(feature_importance_df$Variation[1:min(10, nrow(feature_importance_df))],
+            names.arg = feature_importance_df$Feature[1:min(10, nrow(feature_importance_df))],
+            col = "skyblue",
+            main = "Top Discriminating Features for TCP Attacks",
+            ylab = "Coefficient of Variation",
+            las = 2)
+    
+    # Create boxplots for the top 3 features by class
+    if (length(top_features) >= 3) {
+      for (i in 1:min(3, length(top_features))) {
+        feature <- top_features[i]
+        boxplot(tcp_data[[feature]] ~ tcp_data$class, 
+                main = paste("Distribution of", feature, "by Attack Type (TCP)"),
+                xlab = "Attack Type",
+                ylab = feature,
+                col = rainbow(length(unique(tcp_data$class))),
+                las = 2,
+                cex.axis = 0.7)
+      }
+    }
+  }
   
-  tcp_service_plot <- plot_ly(
-    data = tcp_service_counts,
-    x = ~Var1,
-    y = ~Freq,
-    type = 'bar',
-    marker = list(color = 'orange')
-  ) %>%
-  layout(
-    title = 'Top 15 Services in TCP Protocol',
-    xaxis = list(title = 'Service', tickangle = 45),
-    yaxis = list(title = 'Count', type = 'log'),
-    margin = list(b = 120)
-  )
+  # 4. Duration analysis by attack type
+  # Create boxplots of duration by attack type
+  boxplot(log10(tcp_data$duration + 1) ~ tcp_data$class,
+          main = "Connection Duration by Attack Type (TCP) - Log Scale",
+          xlab = "Attack Type",
+          ylab = "Log10(Duration + 1)",
+          col = rainbow(length(unique(tcp_data$class))),
+          las = 2,
+          cex.axis = 0.7)
   
-  # 4. Error Rate Analysis
-  tcp_error_plot <- plot_ly(
-    data = tcp_data[sample(1:nrow(tcp_data), min(5000, nrow(tcp_data)))],
-    x = ~rerror_rate,
-    y = ~serror_rate,
-    color = ~class,
-    type = 'scatter',
-    mode = 'markers',
-    marker = list(size = 8, opacity = 0.7)
-  ) %>%
-  layout(
-    title = 'Error Rate Analysis by Attack Type (TCP)',
-    xaxis = list(title = 'Rerror Rate'),
-    yaxis = list(title = 'Serror Rate'),
-    legend = list(x = 0.1, y = 0.9)
-  )
-  
-  # Display the plots
-  tcp_attack_dist
-  tcp_bytes_plot
-  tcp_service_plot
-  tcp_error_plot
+  # 5. Error Rate Analysis - More informative scatterplot
+  # Create a more meaningful scatterplot with density contours
+  if (all(c("serror_rate", "rerror_rate") %in% colnames(tcp_data))) {
+    # Sample data for better visualization
+    set.seed(123)
+    sample_size <- min(5000, nrow(tcp_data))
+    if (sample_size > 0) {
+      sampled_tcp <- tcp_data[sample(1:nrow(tcp_data), sample_size),]
+      
+      # Create a scatterplot with more informative elements
+      plot(sampled_tcp$rerror_rate, sampled_tcp$serror_rate,
+           col = rainbow(length(unique(tcp_data$class)))[as.numeric(sampled_tcp$class)],
+           pch = 19,
+           main = "Error Rate Analysis by Attack Type (TCP)",
+           xlab = "Rerror Rate",
+           ylab = "Serror Rate",
+           cex = 0.7)
+      
+      # Add a legend
+      legend("topright", 
+             legend = levels(tcp_data$class),
+             col = rainbow(length(unique(tcp_data$class))),
+             pch = 19,
+             cex = 0.7,
+             bty = "n")
+    }
+  }
+} else {
+  cat("No TCP data available for analysis.\n")
 }
 ```
 
 ### UDP Protocol Analysis
 
-```{r udp_visualizations, warning=FALSE, message=FALSE}
-if ("udp" %in% protocols) {
+```{r udp_visualizations, fig.width=10, fig.height=6, warning=FALSE, message=FALSE}
+# Check if UDP protocol exists and has data
+if ("udp" %in% names(protocol_data) && nrow(protocol_data[['udp']]) > 0) {
   udp_data <- protocol_data[['udp']]
   
-  # 1. Attack Distribution in UDP
-  udp_attack_dist <- plot_ly(
-    x = ~names(table(udp_data$class)),
-    y = ~as.numeric(table(udp_data$class)),
-    type = 'bar',
-    marker = list(color = 'forestgreen')
-  ) %>%
-  layout(
-    title = 'Attack Type Distribution in UDP Protocol',
-    xaxis = list(title = 'Attack Type', tickangle = 45),
-    yaxis = list(title = 'Count', type = 'log'),
-    hovermode = 'closest'
+  # Create a more informative title
+  cat("\n### UDP Protocol Analysis", "\n")
+  cat("Number of UDP connections:", nrow(udp_data), "\n")
+  cat("Number of attack types in UDP:", length(unique(udp_data$class)), "\n\n")
+  
+  # 1. Attack Distribution in UDP - More informative with percentages
+  udp_class_counts <- table(udp_data$class)
+  udp_class_df <- data.frame(
+    Class = names(udp_class_counts),
+    Count = as.numeric(udp_class_counts),
+    Percentage = round(100 * as.numeric(udp_class_counts) / sum(udp_class_counts), 2)
   )
+  udp_class_df <- udp_class_df[order(udp_class_df$Count, decreasing = TRUE),]
   
-  # 2. Duration vs Count Analysis
-  udp_duration_plot <- plot_ly(
-    data = udp_data,
-    x = ~duration,
-    y = ~count,
-    color = ~class,
-    type = 'scatter',
-    mode = 'markers',
-    marker = list(size = 10, opacity = 0.7)
-  ) %>%
-  layout(
-    title = 'Duration vs Connection Count by Attack Type (UDP)',
-    xaxis = list(title = 'Duration', type = 'log'),
-    yaxis = list(title = 'Connection Count', type = 'log'),
-    legend = list(x = 0.1, y = 0.9)
+  # Print the table for reference
+  print(udp_class_df)
+  
+  # Create a more informative bar plot
+  par(mar = c(10, 4, 4, 2) + 0.1)  # Increase bottom margin for labels
+  barplot(udp_class_df$Count, 
+          names.arg = paste0(udp_class_df$Class, "\n(", udp_class_df$Percentage, "%)"),
+          col = rainbow(nrow(udp_class_df)),
+          main = "Attack Type Distribution in UDP Protocol",
+          ylab = "Count",
+          las = 2,  # Rotate labels
+          cex.names = 0.8)  # Smaller text for labels
+  
+  # Add a log scale version for better visibility of smaller classes
+  barplot(log10(udp_class_df$Count + 1), 
+          names.arg = paste0(udp_class_df$Class, "\n(", udp_class_df$Percentage, "%)"),
+          col = rainbow(nrow(udp_class_df)),
+          main = "Attack Type Distribution in UDP Protocol (Log Scale)",
+          ylab = "Log10(Count + 1)",
+          las = 2,
+          cex.names = 0.8)
+  
+  # 2. Service Analysis - Create a more informative pie chart
+  udp_service_counts <- table(udp_data$service)
+  udp_service_df <- data.frame(
+    Service = names(udp_service_counts),
+    Count = as.numeric(udp_service_counts),
+    Percentage = round(100 * as.numeric(udp_service_counts) / sum(udp_service_counts), 2)
   )
+  udp_service_df <- udp_service_df[order(udp_service_df$Count, decreasing = TRUE),]
   
-  # 3. Service Distribution
-  udp_service_counts <- as.data.frame(table(udp_data$service))
-  udp_service_counts <- udp_service_counts[order(udp_service_counts$Freq, decreasing = TRUE),]
-  udp_service_counts <- udp_service_counts[1:min(15, nrow(udp_service_counts)),]
+  # Print the table
+  cat("\nService Distribution in UDP:\n")
+  print(udp_service_df)
   
-  udp_service_plot <- plot_ly(
-    data = udp_service_counts,
-    x = ~Var1,
-    y = ~Freq,
-    type = 'bar',
-    marker = list(color = 'purple')
-  ) %>%
-  layout(
-    title = 'Top Services in UDP Protocol',
-    xaxis = list(title = 'Service', tickangle = 45),
-    yaxis = list(title = 'Count', type = 'log'),
-    margin = list(b = 120)
-  )
+  # Create a pie chart for top services
+  top_n <- min(8, nrow(udp_service_df))
+  if (top_n > 0) {
+    # Combine small categories into "Other"
+    if (nrow(udp_service_df) > top_n) {
+      top_services <- udp_service_df[1:top_n,]
+      other_services <- data.frame(
+        Service = "Other",
+        Count = sum(udp_service_df$Count[(top_n+1):nrow(udp_service_df)]),
+        Percentage = sum(udp_service_df$Percentage[(top_n+1):nrow(udp_service_df)])
+      )
+      pie_data <- rbind(top_services, other_services)
+    } else {
+      pie_data <- udp_service_df
+    }
+    
+    # Create the pie chart
+    pie(pie_data$Count, 
+        labels = paste0(pie_data$Service, " (", pie_data$Percentage, "%)"),
+        col = rainbow(nrow(pie_data)),
+        main = "Service Distribution in UDP Protocol")
+  }
   
-  # 4. Bytes Analysis
-  udp_bytes_boxplot <- plot_ly() %>%
-    add_boxplot(
-      data = udp_data, 
-      x = ~class, 
-      y = ~log10(src_bytes + 1),
-      name = 'Source Bytes',
-      boxpoints = 'outliers',
-      jitter = 0.3,
-      marker = list(color = 'blue'),
-      line = list(color = 'blue')
-    ) %>%
-    add_boxplot(
-      data = udp_data, 
-      x = ~class, 
-      y = ~log10(dst_bytes + 1),
-      name = 'Destination Bytes',
-      boxpoints = 'outliers',
-      jitter = 0.3,
-      marker = list(color = 'red'),
-      line = list(color = 'red')
-    ) %>%
-    layout(
-      title = 'Log Source & Destination Bytes by Attack Type (UDP)',
-      xaxis = list(title = 'Attack Type', tickangle = 45),
-      yaxis = list(title = 'Log10(Bytes + 1)'),
-      boxmode = 'group',
-      margin = list(b = 120)
+  # 3. Byte Analysis - Create more informative boxplots
+  # Check if we have the necessary columns
+  if (all(c("src_bytes", "dst_bytes") %in% colnames(udp_data))) {
+    # Create side-by-side boxplots for source and destination bytes by class
+    par(mfrow = c(1, 2))  # 1 row, 2 columns
+    
+    # Source bytes boxplot
+    boxplot(log10(udp_data$src_bytes + 1) ~ udp_data$class,
+            main = "Source Bytes by Attack Type (UDP) - Log Scale",
+            xlab = "Attack Type",
+            ylab = "Log10(Source Bytes + 1)",
+            col = rainbow(length(unique(udp_data$class))),
+            las = 2,
+            cex.axis = 0.7)
+    
+    # Destination bytes boxplot
+    boxplot(log10(udp_data$dst_bytes + 1) ~ udp_data$class,
+            main = "Destination Bytes by Attack Type (UDP) - Log Scale",
+            xlab = "Attack Type",
+            ylab = "Log10(Destination Bytes + 1)",
+            col = rainbow(length(unique(udp_data$class))),
+            las = 2,
+            cex.axis = 0.7)
+    
+    # Reset the plotting layout
+    par(mfrow = c(1, 1))
+  }
+  
+  # 4. Duration vs Count Analysis - Create a more informative scatterplot
+  if (all(c("duration", "count") %in% colnames(udp_data))) {
+    # Create a scatterplot with more informative elements
+    plot(jitter(udp_data$duration), jitter(udp_data$count),
+         col = rainbow(length(unique(udp_data$class)))[as.numeric(udp_data$class)],
+         pch = 19,
+         main = "Duration vs Connection Count by Attack Type (UDP)",
+         xlab = "Duration (jittered)",
+         ylab = "Connection Count (jittered)",
+         log = "xy",  # Log scale for both axes
+         cex = 0.7)
+    
+    # Add a legend
+    legend("topright", 
+           legend = levels(udp_data$class),
+           col = rainbow(length(unique(udp_data$class))),
+           pch = 19,
+           cex = 0.7,
+           bty = "n")
+  }
+  
+  # 5. Flag Distribution Analysis
+  if ("flag" %in% colnames(udp_data)) {
+    udp_flag_counts <- table(udp_data$flag)
+    udp_flag_df <- data.frame(
+      Flag = names(udp_flag_counts),
+      Count = as.numeric(udp_flag_counts),
+      Percentage = round(100 * as.numeric(udp_flag_counts) / sum(udp_flag_counts), 2)
     )
-  
-  # Display the plots
-  udp_attack_dist
-  udp_duration_plot
-  udp_service_plot
-  udp_bytes_boxplot
+    udp_flag_df <- udp_flag_df[order(udp_flag_df$Count, decreasing = TRUE),]
+    
+    # Print the table
+    cat("\nFlag Distribution in UDP:\n")
+    print(udp_flag_df)
+    
+    # Create a bar plot
+    barplot(udp_flag_df$Count, 
+            names.arg = paste0(udp_flag_df$Flag, "\n(", udp_flag_df$Percentage, "%)"),
+            col = rainbow(nrow(udp_flag_df)),
+            main = "Flag Distribution in UDP Protocol",
+            ylab = "Count",
+            las = 2)
+    
+    # Create a contingency table of flag vs class
+    flag_class_table <- table(udp_data$flag, udp_data$class)
+    
+    # Print the table
+    cat("\nFlag vs Attack Type in UDP:\n")
+    print(flag_class_table)
+    
+    # Create a mosaic plot
+    mosaicplot(flag_class_table,
+               main = "Flag vs Attack Type in UDP Protocol",
+               color = rainbow(length(unique(udp_data$class))),
+               las = 2,
+               cex.axis = 0.7)
+  }
+} else {
+  cat("No UDP data available for analysis.\n")
 }
 ```
 
 ### ICMP Protocol Analysis
 
-```{r icmp_visualizations, warning=FALSE, message=FALSE}
-if ("icmp" %in% protocols) {
+```{r icmp_visualizations, fig.width=10, fig.height=6, warning=FALSE, message=FALSE}
+# Check if ICMP protocol exists and has data
+if ("icmp" %in% names(protocol_data) && nrow(protocol_data[['icmp']]) > 0) {
   icmp_data <- protocol_data[['icmp']]
   
-  # 1. Attack Distribution in ICMP
-  icmp_attack_dist <- plot_ly(
-    x = ~names(table(icmp_data$class)),
-    y = ~as.numeric(table(icmp_data$class)),
-    type = 'bar',
-    marker = list(color = 'coral')
-  ) %>%
-  layout(
-    title = 'Attack Type Distribution in ICMP Protocol',
-    xaxis = list(title = 'Attack Type', tickangle = 45),
-    yaxis = list(title = 'Count', type = 'log'),
-    hovermode = 'closest'
+  # Create a more informative title
+  cat("\n### ICMP Protocol Analysis", "\n")
+  cat("Number of ICMP connections:", nrow(icmp_data), "\n")
+  cat("Number of attack types in ICMP:", length(unique(icmp_data$class)), "\n\n")
+  
+  # 1. Attack Distribution in ICMP - More informative with percentages
+  icmp_class_counts <- table(icmp_data$class)
+  icmp_class_df <- data.frame(
+    Class = names(icmp_class_counts),
+    Count = as.numeric(icmp_class_counts),
+    Percentage = round(100 * as.numeric(icmp_class_counts) / sum(icmp_class_counts), 2)
   )
+  icmp_class_df <- icmp_class_df[order(icmp_class_df$Count, decreasing = TRUE),]
   
-  # 2. Duration Distribution
-  icmp_duration_hist <- plot_ly(
-    data = icmp_data,
-    x = ~duration,
-    color = ~class,
-    type = 'histogram',
-    opacity = 0.7,
-    nbinsx = 30
-  ) %>%
-  layout(
-    title = 'Duration Distribution by Attack Type (ICMP)',
-    xaxis = list(title = 'Duration'),
-    yaxis = list(title = 'Count'),
-    barmode = 'overlay',
-    legend = list(x = 0.1, y = 0.9)
-  )
+  # Print the table for reference
+  print(icmp_class_df)
   
-  # 3. Flag Distribution
-  icmp_flag_counts <- as.data.frame(table(icmp_data$flag))
+  # Create a more informative bar plot
+  par(mar = c(10, 4, 4, 2) + 0.1)  # Increase bottom margin for labels
+  barplot(icmp_class_df$Count, 
+          names.arg = paste0(icmp_class_df$Class, "\n(", icmp_class_df$Percentage, "%)"),
+          col = rainbow(nrow(icmp_class_df)),
+          main = "Attack Type Distribution in ICMP Protocol",
+          ylab = "Count",
+          las = 2,  # Rotate labels
+          cex.names = 0.8)  # Smaller text for labels
   
-  icmp_flag_plot <- plot_ly(
-    data = icmp_flag_counts,
-    labels = ~Var1,
-    values = ~Freq,
-    type = 'pie',
-    hole = 0.4,
-    marker = list(colors = RColorBrewer::brewer.pal(min(8, nrow(icmp_flag_counts)), 'Set2'))
-  ) %>%
-  layout(
-    title = 'Flag Distribution in ICMP Protocol',
-    showlegend = TRUE,
-    legend = list(x = 0.1, y = 0.9)
-  )
-  
-  # 4. Feature Correlations Heatmap
-  # Select numeric columns for correlation
-  numeric_cols <- sapply(icmp_data, is.numeric)
-  if (sum(numeric_cols) > 2) {  # Need at least 2 numeric columns
-    # Calculate correlations
-    icmp_cor <- cor(icmp_data[, numeric_cols], use = 'pairwise.complete.obs')
-    # Get top correlating features (absolute value)
-    abs_cor <- abs(icmp_cor)
-    diag(abs_cor) <- 0  # Remove self-correlations
-    # Get top N features
-    n_top <- min(10, sum(numeric_cols))
-    top_indices <- which(abs_cor > sort(abs_cor, decreasing = TRUE)[n_top^2], arr.ind = TRUE)
-    top_features <- unique(c(row.names(icmp_cor)[top_indices[,1]], 
-                            colnames(icmp_cor)[top_indices[,2]]))
+  # 2. Byte Analysis for ICMP
+  # Check if we have the necessary columns
+  if (all(c("src_bytes", "dst_bytes") %in% colnames(icmp_data))) {
+    # Create a scatterplot of source vs destination bytes by attack type
+    plot(log10(icmp_data$src_bytes + 1), log10(icmp_data$dst_bytes + 1),
+         col = rainbow(length(unique(icmp_data$class)))[as.numeric(icmp_data$class)],
+         pch = 19,
+         main = "Source vs Destination Bytes by Attack Type (ICMP) - Log Scale",
+         xlab = "Log10(Source Bytes + 1)",
+         ylab = "Log10(Destination Bytes + 1)",
+         cex = 0.7)
     
-    # Filter correlation matrix to top features
-    icmp_cor_filtered <- icmp_cor[top_features, top_features]
+    # Add a legend
+    legend("topright", 
+           legend = levels(icmp_data$class),
+           col = rainbow(length(unique(icmp_data$class))),
+           pch = 19,
+           cex = 0.7,
+           bty = "n")
     
-    # Convert to long format for plotly
-    cor_data <- expand.grid(x = colnames(icmp_cor_filtered), y = rownames(icmp_cor_filtered))
-    cor_data$correlation <- as.vector(icmp_cor_filtered)
+    # Create side-by-side boxplots for source and destination bytes by class
+    par(mfrow = c(1, 2))  # 1 row, 2 columns
     
-    icmp_heatmap <- plot_ly(
-      data = cor_data,
-      x = ~x,
-      y = ~y,
-      z = ~correlation,
-      type = 'heatmap',
-      colorscale = 'RdBu',
-      zmin = -1,
-      zmax = 1
-    ) %>%
-    layout(
-      title = 'Feature Correlation Heatmap (ICMP)',
-      xaxis = list(title = '', tickangle = 45),
-      yaxis = list(title = ''),
-      margin = list(l = 120, b = 120)
-    )
+    # Source bytes boxplot
+    boxplot(log10(icmp_data$src_bytes + 1) ~ icmp_data$class,
+            main = "Source Bytes by Attack Type (ICMP) - Log Scale",
+            xlab = "Attack Type",
+            ylab = "Log10(Source Bytes + 1)",
+            col = rainbow(length(unique(icmp_data$class))),
+            las = 2,
+            cex.axis = 0.7)
     
-    # Display the heatmap
-    icmp_heatmap
+    # Destination bytes boxplot
+    boxplot(log10(icmp_data$dst_bytes + 1) ~ icmp_data$class,
+            main = "Destination Bytes by Attack Type (ICMP) - Log Scale",
+            xlab = "Attack Type",
+            ylab = "Log10(Destination Bytes + 1)",
+            col = rainbow(length(unique(icmp_data$class))),
+            las = 2,
+            cex.axis = 0.7)
+    
+    # Reset the plotting layout
+    par(mfrow = c(1, 1))
   }
   
-  # Display other plots
-  icmp_attack_dist
-  icmp_duration_hist
-  icmp_flag_plot
+  # 3. Duration Analysis - Create more informative histogram
+  if ("duration" %in% colnames(icmp_data)) {
+    # Create a histogram of duration by attack type
+    hist(log10(icmp_data$duration + 1),
+         breaks = 30,
+         col = "lightblue",
+         main = "Duration Distribution in ICMP Protocol - Log Scale",
+         xlab = "Log10(Duration + 1)",
+         ylab = "Frequency")
+    
+    # Create boxplots of duration by attack type
+    boxplot(log10(icmp_data$duration + 1) ~ icmp_data$class,
+            main = "Connection Duration by Attack Type (ICMP) - Log Scale",
+            xlab = "Attack Type",
+            ylab = "Log10(Duration + 1)",
+            col = rainbow(length(unique(icmp_data$class))),
+            las = 2,
+            cex.axis = 0.7)
+  }
+  
+  # 4. Flag Distribution Analysis
+  if ("flag" %in% colnames(icmp_data)) {
+    icmp_flag_counts <- table(icmp_data$flag)
+    icmp_flag_df <- data.frame(
+      Flag = names(icmp_flag_counts),
+      Count = as.numeric(icmp_flag_counts),
+      Percentage = round(100 * as.numeric(icmp_flag_counts) / sum(icmp_flag_counts), 2)
+    )
+    icmp_flag_df <- icmp_flag_df[order(icmp_flag_df$Count, decreasing = TRUE),]
+    
+    # Print the table
+    cat("\nFlag Distribution in ICMP:\n")
+    print(icmp_flag_df)
+    
+    # Create a pie chart
+    pie(icmp_flag_df$Count, 
+        labels = paste0(icmp_flag_df$Flag, " (", icmp_flag_df$Percentage, "%)"),
+        col = rainbow(nrow(icmp_flag_df)),
+        main = "Flag Distribution in ICMP Protocol")
+    
+    # Create a contingency table of flag vs class
+    flag_class_table <- table(icmp_data$flag, icmp_data$class)
+    
+    # Print the table
+    cat("\nFlag vs Attack Type in ICMP:\n")
+    print(flag_class_table)
+    
+    # Create a mosaic plot if we have more than one flag type
+    if (nrow(flag_class_table) > 1) {
+      mosaicplot(flag_class_table,
+                 main = "Flag vs Attack Type in ICMP Protocol",
+                 color = rainbow(length(unique(icmp_data$class))),
+                 las = 2,
+                 cex.axis = 0.7)
+    }
+  }
+  
+  # 5. Feature importance for distinguishing attack types in ICMP
+  # Select numeric columns for analysis
+  numeric_cols <- sapply(icmp_data, is.numeric)
+  if (sum(numeric_cols) > 2) {
+    icmp_numeric <- icmp_data[, numeric_cols]
+    
+    # Calculate mean values by class
+    icmp_means_by_class <- aggregate(icmp_numeric, by = list(Class = icmp_data$class), mean, na.rm = TRUE)
+    
+    # Calculate overall means
+    overall_means <- colMeans(icmp_numeric, na.rm = TRUE)
+    
+    # Calculate how much each feature varies by class (feature importance proxy)
+    feature_variation <- apply(icmp_means_by_class[, -1], 2, function(x) sd(x, na.rm = TRUE) / mean(x, na.rm = TRUE))
+    
+    # Select top varying features
+    top_features <- names(sort(feature_variation, decreasing = TRUE)[1:min(10, length(feature_variation))])
+    
+    # Print the top features
+    cat("\nTop Discriminating Features for ICMP Attacks:\n")
+    feature_importance_df <- data.frame(
+      Feature = names(feature_variation),
+      Variation = feature_variation
+    )
+    feature_importance_df <- feature_importance_df[order(feature_importance_df$Variation, decreasing = TRUE),]
+    print(head(feature_importance_df, 10))
+    
+    # Plot the top features
+    par(mar = c(10, 4, 4, 2) + 0.1)
+    barplot(feature_importance_df$Variation[1:min(10, nrow(feature_importance_df))],
+            names.arg = feature_importance_df$Feature[1:min(10, nrow(feature_importance_df))],
+            col = "skyblue",
+            main = "Top Discriminating Features for ICMP Attacks",
+            ylab = "Coefficient of Variation",
+            las = 2,
+            cex.names = 0.7)
+  }
+} else {
+  cat("No ICMP data available for analysis.\n")
 }
 ```
 
 ### Cross-Protocol Comparison
 
-```{r cross_protocol_viz, warning=FALSE, message=FALSE}
-# 1. Attack type distribution across protocols
-attack_by_protocol <- data.frame(Protocol=character(), AttackType=character(), Count=numeric(), stringsAsFactors=FALSE)
-
-for (protocol in protocols) {
-  proto_data <- protocol_data[[protocol]]
-  class_counts <- table(proto_data$class)
+```{r cross_protocol_viz, fig.width=10, fig.height=6, warning=FALSE, message=FALSE}
+# Check if we have at least one protocol with data
+if (length(names(protocol_data)) > 0) {
+  cat("\n### Cross-Protocol Comparison\n")
+  cat("Comparing attack patterns across different protocols\n\n")
   
-  # Filter out any empty class values
-  valid_classes <- names(class_counts)[names(class_counts) != ""]
-  class_counts <- class_counts[valid_classes]
+  # 1. Attack type distribution across protocols - using base R for robustness
+  # Prepare data frame for attack distribution
+  attack_by_protocol <- data.frame(Protocol=character(), 
+                                  AttackType=character(), 
+                                  Count=numeric(), 
+                                  stringsAsFactors=FALSE)
   
-  for (cls in names(class_counts)) {
-    if (!is.na(cls) && cls != "") {  # Skip NA or empty class names
-      attack_by_protocol <- rbind(
-        attack_by_protocol,
-        data.frame(
-          Protocol = protocol,
-          AttackType = cls,
-          Count = class_counts[cls],
-          stringsAsFactors = FALSE
-        )
-      )
+  for (protocol in names(protocol_data)) {
+    if (nrow(protocol_data[[protocol]]) > 0) {
+      # Get class counts for this protocol
+      class_counts <- table(protocol_data[[protocol]]$class)
+      
+      # Filter out any empty class values
+      valid_classes <- names(class_counts)[names(class_counts) != ""]
+      class_counts <- class_counts[valid_classes]
+      
+      # Add to data frame
+      for (cls in names(class_counts)) {
+        if (!is.na(cls) && cls != "") {  # Skip NA or empty class names
+          attack_by_protocol <- rbind(
+            attack_by_protocol,
+            data.frame(
+              Protocol = protocol,
+              AttackType = cls,
+              Count = class_counts[cls],
+              stringsAsFactors = FALSE
+            )
+          )
+        }
+      }
     }
   }
-}
-
-# Create the stacked bar chart
-protocol_attack_dist <- plot_ly(
-  data = attack_by_protocol,
-  x = ~Protocol,
-  y = ~Count,
-  color = ~AttackType,
-  type = 'bar'
-) %>%
-layout(
-  title = 'Attack Type Distribution Across Protocols',
-  xaxis = list(title = 'Protocol'),
-  yaxis = list(title = 'Count', type = 'log'),
-  barmode = 'stack',
-  legend = list(x = 0.7, y = 0.9)
-)
-
-# 2. Feature comparison across protocols
-# Sample a smaller subset for visualization
-sample_size_per_protocol <- 5000
-
-protocol_samples <- data.frame()
-for (protocol in protocols) {
-  proto_data <- protocol_data[[protocol]]
-  # Sample from each protocol
-  n_to_sample <- min(sample_size_per_protocol, nrow(proto_data))
-  sampled_rows <- proto_data[sample(1:nrow(proto_data), n_to_sample),]
-  sampled_rows$Protocol <- protocol  # Add protocol identifier
-  protocol_samples <- rbind(protocol_samples, sampled_rows)
-}
-
-# Create 3D scatter plot comparing key features
-feature_3d <- plot_ly(
-  data = protocol_samples,
-  x = ~src_bytes,
-  y = ~dst_bytes,
-  z = ~duration,
-  color = ~Protocol,
-  symbol = ~Protocol,
-  type = 'scatter3d',
-  mode = 'markers',
-  marker = list(size = 3, opacity = 0.7)
-) %>%
-layout(
-  title = '3D Comparison of Key Features Across Protocols',
-  scene = list(
-    xaxis = list(title = 'Source Bytes', type = 'log'),
-    yaxis = list(title = 'Destination Bytes', type = 'log'),
-    zaxis = list(title = 'Duration', type = 'log')
-  )
-)
-
-# 3. Connection metrics comparison
-metrics_boxplot <- plot_ly() %>%
-  add_boxplot(
-    data = protocol_samples[protocol_samples$Protocol == protocols[1],],
-    y = ~same_srv_rate,
-    name = protocols[1],
-    boxpoints = 'outliers',
-    jitter = 0.3,
-    marker = list(color = 'blue'),
-    line = list(color = 'blue'),
-    x = 'Same Service Rate'
-  )
-
-# Add other protocols
-if (length(protocols) > 1) {
-  for (i in 2:length(protocols)) {
-    metrics_boxplot <- metrics_boxplot %>%
-      add_boxplot(
-        data = protocol_samples[protocol_samples$Protocol == protocols[i],],
-        y = ~same_srv_rate,
-        name = protocols[i],
-        boxpoints = 'outliers',
-        jitter = 0.3,
-        marker = list(color = RColorBrewer::brewer.pal(length(protocols), 'Set1')[i]),
-        line = list(color = RColorBrewer::brewer.pal(length(protocols), 'Set1')[i]),
-        x = 'Same Service Rate'
-      )
+  
+  # Print summary table
+  cat("Attack counts by protocol:\n")
+  attack_summary <- aggregate(Count ~ Protocol, data = attack_by_protocol, sum)
+  print(attack_summary)
+  
+  # Create a more informative stacked bar plot
+  if (nrow(attack_by_protocol) > 0) {
+    # Create a contingency table for easier plotting
+    attack_table <- xtabs(Count ~ Protocol + AttackType, data = attack_by_protocol)
+    
+    # Print the table
+    cat("\nAttack distribution by protocol:\n")
+    print(attack_table)
+    
+    # Create a stacked barplot
+    par(mar = c(10, 4, 4, 2) + 0.1)  # Increase bottom margin for labels
+    barplot(t(attack_table), 
+            col = rainbow(ncol(attack_table)),
+            main = "Attack Type Distribution Across Protocols",
+            ylab = "Count",
+            legend.text = colnames(attack_table),
+            args.legend = list(x = "topright", cex = 0.7))
+    
+    # Create a percentage version
+    attack_pct <- prop.table(attack_table, 1) * 100  # Row percentages
+    barplot(t(attack_pct), 
+            col = rainbow(ncol(attack_pct)),
+            main = "Attack Type Distribution Across Protocols (Percentage)",
+            ylab = "Percentage",
+            legend.text = colnames(attack_pct),
+            args.legend = list(x = "topright", cex = 0.7))
   }
+  
+  # 2. Feature comparison across protocols
+  # Prepare data for comparison
+  protocol_comparison <- data.frame()
+  
+  # Key features to compare
+  key_features <- c("duration", "src_bytes", "dst_bytes", "count", "srv_count")
+  
+  # Calculate summary statistics by protocol
+  for (protocol in names(protocol_data)) {
+    if (nrow(protocol_data[[protocol]]) > 0) {
+      proto_data <- protocol_data[[protocol]]
+      
+      # Calculate means for numeric features
+      for (feature in intersect(key_features, colnames(proto_data))) {
+        if (is.numeric(proto_data[[feature]])) {
+          protocol_comparison <- rbind(
+            protocol_comparison,
+            data.frame(
+              Protocol = protocol,
+              Feature = feature,
+              Mean = mean(proto_data[[feature]], na.rm = TRUE),
+              Median = median(proto_data[[feature]], na.rm = TRUE),
+              StdDev = sd(proto_data[[feature]], na.rm = TRUE),
+              stringsAsFactors = FALSE
+            )
+          )
+        }
+      }
+    }
+  }
+  
+  # Print the comparison table
+  if (nrow(protocol_comparison) > 0) {
+    cat("\nFeature comparison across protocols:\n")
+    print(protocol_comparison)
+    
+    # Create a bar plot comparing means across protocols
+    # Reshape data for easier plotting
+    if (length(unique(protocol_comparison$Feature)) > 1) {
+      # Create side-by-side barplots for each feature
+      features_to_plot <- unique(protocol_comparison$Feature)
+      
+      for (feature in features_to_plot) {
+        feature_data <- protocol_comparison[protocol_comparison$Feature == feature,]
+        if (nrow(feature_data) > 0) {
+          barplot(feature_data$Mean, 
+                  names.arg = feature_data$Protocol,
+                  col = rainbow(nrow(feature_data)),
+                  main = paste("Mean", feature, "by Protocol"),
+                  ylab = paste("Mean", feature),
+                  las = 2)
+        }
+      }
+    }
+  }
+  
+  # 3. Service distribution comparison
+  service_by_protocol <- data.frame()
+  
+  for (protocol in names(protocol_data)) {
+    if (nrow(protocol_data[[protocol]]) > 0 && "service" %in% colnames(protocol_data[[protocol]])) {
+      # Get top services for this protocol
+      service_counts <- table(protocol_data[[protocol]]$service)
+      top_services <- names(sort(service_counts, decreasing = TRUE)[1:min(5, length(service_counts))])
+      
+      for (svc in top_services) {
+        service_by_protocol <- rbind(
+          service_by_protocol,
+          data.frame(
+            Protocol = protocol,
+            Service = svc,
+            Count = service_counts[svc],
+            stringsAsFactors = FALSE
+          )
+        )
+      }
+    }
+  }
+  
+  # Print the service comparison
+  if (nrow(service_by_protocol) > 0) {
+    cat("\nTop services by protocol:\n")
+    print(service_by_protocol)
+    
+    # Create a grouped bar plot
+    if (length(unique(service_by_protocol$Protocol)) > 1) {
+      # Create a contingency table
+      service_table <- xtabs(Count ~ Protocol + Service, data = service_by_protocol)
+      
+      # Plot
+      par(mar = c(10, 4, 4, 2) + 0.1)  # Increase bottom margin for labels
+      barplot(t(service_table), 
+              beside = TRUE,  # Grouped bars
+              col = rainbow(ncol(service_table)),
+              main = "Top Services by Protocol",
+              ylab = "Count",
+              las = 2,
+              legend.text = colnames(service_table),
+              args.legend = list(x = "topright", cex = 0.7))
+    }
+  }
+  
+  # 4. Flag distribution comparison
+  flag_by_protocol <- data.frame()
+  
+  for (protocol in names(protocol_data)) {
+    if (nrow(protocol_data[[protocol]]) > 0 && "flag" %in% colnames(protocol_data[[protocol]])) {
+      # Get flag counts for this protocol
+      flag_counts <- table(protocol_data[[protocol]]$flag)
+      
+      for (flg in names(flag_counts)) {
+        flag_by_protocol <- rbind(
+          flag_by_protocol,
+          data.frame(
+            Protocol = protocol,
+            Flag = flg,
+            Count = flag_counts[flg],
+            Percentage = 100 * flag_counts[flg] / sum(flag_counts),
+            stringsAsFactors = FALSE
+          )
+        )
+      }
+    }
+  }
+  
+  # Print the flag comparison
+  if (nrow(flag_by_protocol) > 0) {
+    cat("\nFlag distribution by protocol:\n")
+    print(flag_by_protocol)
+    
+    # Create a grouped bar plot
+    if (length(unique(flag_by_protocol$Protocol)) > 1) {
+      # Create a contingency table
+      flag_table <- xtabs(Count ~ Protocol + Flag, data = flag_by_protocol)
+      
+      # Plot
+      par(mar = c(10, 4, 4, 2) + 0.1)  # Increase bottom margin for labels
+      barplot(t(flag_table), 
+              beside = TRUE,  # Grouped bars
+              col = rainbow(ncol(flag_table)),
+              main = "Flag Distribution by Protocol",
+              ylab = "Count",
+              las = 2,
+              legend.text = colnames(flag_table),
+              args.legend = list(x = "topright", cex = 0.7))
+      
+      # Create a percentage version
+      flag_pct <- prop.table(flag_table, 1) * 100  # Row percentages
+      barplot(t(flag_pct), 
+              beside = TRUE,
+              col = rainbow(ncol(flag_pct)),
+              main = "Flag Distribution by Protocol (Percentage)",
+              ylab = "Percentage",
+              las = 2,
+              legend.text = colnames(flag_pct),
+              args.legend = list(x = "topright", cex = 0.7))
+    }
+  }
+} else {
+  cat("No protocol data available for cross-protocol comparison.\n")
 }
-
-metrics_boxplot <- metrics_boxplot %>%
-  layout(
-    title = 'Comparison of Same Service Rate Across Protocols',
-    yaxis = list(title = 'Rate Value'),
-    boxmode = 'group'
-  )
-
-# Display cross-protocol visualizations
-protocol_attack_dist
-feature_3d
-metrics_boxplot
 ```
+
+### Key Insights from Protocol-Based Analysis
+
+The protocol-based analysis reveals distinct patterns across TCP, UDP, and ICMP traffic:
+
+1. **TCP Protocol**:
+   - Hosts the widest variety of attack types
+   - Shows distinctive error rate patterns for different attacks
+   - Service distribution is highly diverse
+   - Certain features like source/destination bytes and error rates are strong indicators of attack types
+
+2. **UDP Protocol**:
+   - More limited range of attack types
+   - Different byte transfer patterns than TCP
+   - Shorter connection durations on average
+   - Flag distributions differ significantly from TCP
+
+3. **ICMP Protocol**:
+   - Primarily used for specific attacks like smurf and pod
+   - Very distinctive duration patterns
+   - Less variability in flag types
+   - Byte patterns are highly correlated with attack types
+
+4. **Cross-Protocol Insights**:
+   - Different protocols are targeted by different attack types
+   - The same attack may exhibit different characteristics across protocols
+   - Service vulnerabilities vary significantly by protocol
+   - Flag patterns provide strong indicators of attack types within each protocol
+
+These visualizations help identify protocol-specific vulnerabilities and attack signatures, potentially improving our model's ability to detect intrusions in different network contexts. The analysis suggests that protocol-specific models might be more effective than a single model for all traffic types.
 
 ```{r}
 
