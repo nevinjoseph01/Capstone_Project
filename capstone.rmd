@@ -49,14 +49,17 @@ data <- fread("data.csv")
 
 ```
 
-
+## EDA and Preprocessing
+### View the data and its structure
 
 ```{r}
 str(data)
 View(data)
-
-
 ```
+
+We can see that our data has 41 features and 1 target variable. The target variable is the last column, and it is a categorical variable with 25 classes. The data consists of over half a million observations (records). The first column is the duration of the connection in seconds, and the rest are various features related to the connection. _Note_ that class "Normal" refers to nonanomalous connections. There are no binary features. There are a few categorical features, which we need to factor at some point.
+
+### Renaming the columns:
 
 ```{r}
 colnames(data)[1:42] <- c(
@@ -72,39 +75,53 @@ colnames(data)[1:42] <- c(
 )
 
 ```
-```{r}
-as.data.frame(table(data$class))
-```
+Since our given data set was unlabeled, we named all the features with accordance to the reference paper.
+
+
+### Checking for class distribution
 
 ```{r}
-# Remove all classes with frequency <= 54
+freq_table <- as.data.frame(table(data$class))
+
+# Sort by frequency (i.e., the 'Freq' column)
+sorted_freq_table <- freq_table[order(-freq_table$Freq), ]
+
+# View result
+print(sorted_freq_table)
+```
+
+* Having analysed the target distribution, we see a significant difference in the number of samples for each class. This most likely will be handled to avoid data leakage. The difference between the most frequent max class and min class is about 154,000 samples. 
+* Another important thing we spotted is that there is a nameless class. We found no usefulness for it and therefore we will remove it.
+
+### Remove all classes with frequency <= 54
+```{r}
 class_counts <- table(data$class)
 rare_classes <- names(class_counts[class_counts <= 54])
 data <- data[!data$class %in% rare_classes]
 ```
-
+Since we observed classes with frequency less than 100, we decided to remove them as they caused unavoidable data leakage. 
 
 ```{r}
-any(is.na(data)) # 
-colSums(is.na(data)) #
-sum(complete.cases(data))
+cat("are there any 'not available' data?", any(is.na(data))) # 
+cat("In which columns those missing data exist:", colSums(is.na(data))) #
+cat("Number of complete cases:", sum(complete.cases(data)))
 # 22469
 nrow(data)
 # 528603
 
 ```
 
+### checking for duplicates:
 
 ```{r}
-# checking for duplicates:
 #sum(duplicated(data)) # 128935
 #nrow(data) - sum(duplicated(data))# 399668
 #remove duplicates
 data <- data[!duplicated(data), ]
-
 ```
+The sum of duplicates is 128935, meaning our new data will have 399668 samples. 
 
-
+#### Factoring categorical variables
 ```{r}
 data$class <- as.factor(data$class)
 data$protocol_type <- as.factor(data$protocol_type)
@@ -112,6 +129,7 @@ data$service <- as.factor(data$service)
 data$flag <- as.factor(data$flag)
 ```
 
+#### Remove samples with empty class
 Finding no usefullness to samples with empty class, we decided remove them.
 ```{r}
 data[data$class == "", ] |> head(10)
@@ -120,6 +138,7 @@ data <- data[data$class != '']
 ```
 
 
+#### Imputing missing values
 ```{r}
 #imputing:
 for (j in names(data)) {
@@ -129,11 +148,11 @@ for (j in names(data)) {
 nrow(data) # 399668 after removing duplicates
 #View(data)
 ```
+Median imputation values is done now. We didn't use mean because median would be less sensitive to outliers.
 
-Removing outliers:
+#### Removing outliers (EDA, but not practiced)
 Can't remove it right now because the target detection is not binary, but about 26 classes.
-The following chunk is disabled for "run above" button
-```{r, include=FALSE}
+```{r}
 # removing outliers:
 training_without_outliers <- copy(data)
 numeric_cols <- names(data)[sapply(data, is.numeric)]
@@ -151,9 +170,9 @@ for(i in numeric_cols) {
 nrow(training_without_outliers)/nrow(data)
 # 0.4350536
 ```
+We kept the option of having a dataset without outliers for future use, but we decided to use the original dataset with outliers as we found usefulness and value in the outliers for detecting certain types of attacks. 
 
-
-Handling missing char/factor values:
+### Handling missing char/factor values
 ```{r}
 # Count empty cells in each column
 empty_cells <- sapply(data, function(x) sum(x == ""))
@@ -163,7 +182,7 @@ View(as.data.frame(empty_cells))
 
 
 
-Checking for overlaping values:
+### Checking for overlaping values (EDA, but not proccessed):
 
 ```{r}
 # Count rows with missing values in each combination of factors
@@ -210,17 +229,17 @@ print(empty_cells_df)
 
 ```
 
+#### Potential categorizing the whole dataset according to flag, service and protocol_type:
 ```{r}
 length(unique(data$flag))
 length(unique(data$service))
 length(unique(data$protocol_type))
 ```
-> length(unique(data$flag))
-[1] 12
-> length(unique(data$service))
-[1] 67
-> length(unique(data$protocol_type))
-[1] 4
+The number of unique values in each feature:
+length of flag: 12
+length of service: 67
+length of protocol_type: 4
+
 
 
 ```{r}
@@ -242,11 +261,15 @@ View(unique_values_df)
 
 
 ## Handling Class Imbalance
-```{r}
-# Set a balanced target for each class
-target_samples <- 2000  # We'll aim for 2000 samples per class
+### Setting a balanced target for each class
 
-# Create a balanced dataset using both undersampling and SMOTE
+```{r}
+target_samples <- 2000  # 
+```
+We'll aim for 2000 samples per class
+
+The following is to create a balanced dataset using both undersampling and oversmampling using SMOTE
+```{r}
 balanced_data <- data.table()
 
 # First, undersample the majority classes
@@ -266,6 +289,7 @@ for (cls in unique(data$class[data$class != ""])) {
   }
 }
 ```
+Note, the oversampling technique is not unitlized by duplicating minorities, but by creating synthetic samples using SMOTE.
 
 #### Now handle the minority classes using SMOTE
 ```{r}
