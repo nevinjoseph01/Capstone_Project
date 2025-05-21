@@ -12,6 +12,19 @@ output:
     toc_float: true
 ---
 
+## Potential research Questions:
++ Create a machine learning model to correctly predict the class of the network data.
++ Use different preprocessing methods to clean, deduplicate and standardize the data.
++ Explore different types of feature selection algorithms, perform a comparative study to find the most effective feature selection algorithm.
++ Test the model with k-fold cross validation and check for any discrepancies.
+
+Suggestions for Qs improvement:
++ More Specific Prediction Goals: "How effective are different ML algorithms in detecting specific attack types (e.g., DoS vs Probe) compared to normal traffic?"
++ Protocol-Specific Analysis: "How do attack patterns and detection accuracy differ across various network protocols (TCP, UDP, ICMP)?"
++ Feature Importance Analysis: "Which network traffic features are most predictive of specific attack types, and does this vary by protocol?"
++ Imbalance Handling Comparison: "How do different class balancing techniques affect the model's ability to detect rare attack types?"
++ Anomaly Detection Focus: "Can unsupervised anomaly detection techniques effectively identify novel attack patterns not present in training data?"
+
 
 ```{r setup, include=FALSE}
 
@@ -114,8 +127,8 @@ data$flag <- as.factor(data$flag)
 
 Finding no usefullness to samples with empty class, we decided remove them.
 ```{r}
-data[data$class == "", ] |> head(10)
-nrow(data[data$class == "", ]) # 36061
+#data[data$class == "", ] |> head(10)
+cat("Number of samples with empty class:", nrow(data[data$class == "", ]))
 data <- data[data$class != '']
 ```
 
