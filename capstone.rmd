@@ -91,7 +91,7 @@ print(sorted_freq_table)
 ```
 
 * Having analysed the target distribution, we see a significant difference in the number of samples for each class. This most likely will be handled to avoid data leakage. The difference between the most frequent max class and min class is about 154,000 samples. 
-* Another important thing we spotted is that there is a nameless class. We found no usefulness for it and therefore we will remove it.
+* Another important point we spotted is that there is a nameless class. We found no usefulness for it and therefore we will remove it.
 
 ### Remove all classes with frequency <= 54
 ```{r}
