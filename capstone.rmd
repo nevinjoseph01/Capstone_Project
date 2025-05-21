@@ -1320,7 +1320,7 @@ if ("icmp" %in% names(protocol_data) && nrow(protocol_data[['icmp']]) > 0) {
 
 ### Cross-Protocol Comparison
 
-```{r cross_protocol_viz, fig.width=10, fig.height=6, warning=FALSE, message=FALSE}
+```{r cross_protocol_viz, fig.width=10, fig.height=6, message=FALSE}
 # Check if we have at least one protocol with data
 if (length(names(protocol_data)) > 0) {
   cat("\n### Cross-Protocol Comparison\n")
@@ -1453,20 +1453,31 @@ if (length(names(protocol_data)) > 0) {
   
   for (protocol in names(protocol_data)) {
     if (nrow(protocol_data[[protocol]]) > 0 && "service" %in% colnames(protocol_data[[protocol]])) {
-      # Get top services for this protocol
+      # Get service counts for this protocol
       service_counts <- table(protocol_data[[protocol]]$service)
-      top_services <- names(sort(service_counts, decreasing = TRUE)[1:min(5, length(service_counts))])
       
-      for (svc in top_services) {
-        service_by_protocol <- rbind(
-          service_by_protocol,
-          data.frame(
-            Protocol = protocol,
-            Service = svc,
-            Count = service_counts[svc],
-            stringsAsFactors = FALSE
+      # Filter out NA or empty service names
+      valid_services <- names(service_counts)[!is.na(names(service_counts)) & names(service_counts) != ""]
+      if (length(valid_services) > 0) {
+        service_counts <- service_counts[valid_services]
+        
+        # Get top services
+        top_n <- min(5, length(service_counts))
+        if (top_n > 0) {
+          top_services <- names(sort(service_counts, decreasing = TRUE)[1:top_n])
+          
+          # Create a temporary data frame for this protocol's services
+          temp_df <- data.frame(
+            Protocol = rep(protocol, length(top_services)),
+            Service = top_services,
+            Count = as.numeric(service_counts[top_services]),
+            stringsAsFactors = FALSE,
+            row.names = NULL  # Explicitly set row.names to NULL to avoid the error
           )
-        )
+          
+          # Append to the main data frame
+          service_by_protocol <- rbind(service_by_protocol, temp_df)
+        }
       }
     }
   }
@@ -1502,17 +1513,23 @@ if (length(names(protocol_data)) > 0) {
       # Get flag counts for this protocol
       flag_counts <- table(protocol_data[[protocol]]$flag)
       
-      for (flg in names(flag_counts)) {
-        flag_by_protocol <- rbind(
-          flag_by_protocol,
-          data.frame(
-            Protocol = protocol,
-            Flag = flg,
-            Count = flag_counts[flg],
-            Percentage = 100 * flag_counts[flg] / sum(flag_counts),
-            stringsAsFactors = FALSE
-          )
+      # Filter out NA or empty flag names
+      valid_flags <- names(flag_counts)[!is.na(names(flag_counts)) & names(flag_counts) != ""]
+      if (length(valid_flags) > 0) {
+        flag_counts <- flag_counts[valid_flags]
+        
+        # Create a temporary data frame for this protocol's flags
+        temp_df <- data.frame(
+          Protocol = rep(protocol, length(valid_flags)),
+          Flag = valid_flags,
+          Count = as.numeric(flag_counts[valid_flags]),
+          Percentage = 100 * as.numeric(flag_counts[valid_flags]) / sum(flag_counts),
+          stringsAsFactors = FALSE,
+          row.names = NULL  # Explicitly set row.names to NULL to avoid the error
         )
+        
+        # Append to the main data frame
+        flag_by_protocol <- rbind(flag_by_protocol, temp_df)
       }
     }
   }
