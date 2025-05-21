@@ -18,7 +18,7 @@ output:
 + Explore different types of feature selection algorithms, perform a comparative study to find the most effective feature selection algorithm.
 + Test the model with k-fold cross validation and check for any discrepancies.
 
-Suggestions for Qs improvement:
+### Suggestions for Qs improvement:
 + More Specific Prediction Goals: "How effective are different ML algorithms in detecting specific attack types (e.g., DoS vs Probe) compared to normal traffic?"
 + Protocol-Specific Analysis: "How do attack patterns and detection accuracy differ across various network protocols (TCP, UDP, ICMP)?"
 + Feature Importance Analysis: "Which network traffic features are most predictive of specific attack types, and does this vary by protocol?"
@@ -228,12 +228,7 @@ length(unique(data$flag))
 length(unique(data$service))
 length(unique(data$protocol_type))
 ```
-> length(unique(data$flag))
-[1] 12
-> length(unique(data$service))
-[1] 67
-> length(unique(data$protocol_type))
-[1] 4
+
 
 
 ```{r}
@@ -686,5 +681,456 @@ print(macro_avg)
 
 Our Random Forest model achieves exceptional performance on the network intrusion detection task with 99.6% overall accuracy, demonstrating robust classification capabilities across various attack types. The macro-averaged metrics (Precision: 0.907, Recall: 0.842, F1-Score: 0.868) confirm strong generalization ability despite class imbalance. Several attack classes show near-perfect detection, including neptune (F1: 0.999), smurf (F1: 0.9999), normal traffic (F1: 0.993), teardrop (F1: 0.997), and pod (F1: 0.981). Moderate performance is observed for back (F1: 0.983), satan (F1: 0.968), and portsweep (F1: 0.939) attacks. The most significant challenge appears with warezclient attacks, which despite perfect precision suffer from lower recall (0.535), with many instances misclassified as normal traffic. Similarly, ipsweep (Recall: 0.879) and nmap (Precision/Recall: 0.928) show room for improvement. The feature selection approach has clearly identified the most informative network traffic characteristics, enabling the model to effectively distinguish between normal traffic and various attack types, though future refinements should focus on improving detection of warezclient attacks to further enhance the system's security capabilities.
 
+## Protocol-Based Analysis and Visualization
 
+Given the large magnitude of our dataset, we'll split it by protocol_type (TCP, UDP, ICMP) and create interactive visualizations for each subset to gain deeper insights into protocol-specific patterns.
 
+```{r protocol_split}
+# Split data by protocol type
+protocols <- unique(data$protocol_type)
+cat("Available protocols:", protocols, "\n")
+
+# Create a list to store the protocol-specific datasets
+protocol_data <- list()
+
+# Split the data
+for (protocol in protocols) {
+  protocol_data[[protocol]] <- data[data$protocol_type == protocol]
+  cat("Protocol", protocol, "has", nrow(protocol_data[[protocol]]), "samples\n")
+}
+
+# Summary of class distribution by protocol
+for (protocol in protocols) {
+  cat("\nClass distribution for protocol", protocol, ":\n")
+  print(as.data.frame(table(protocol_data[[protocol]]$class)))
+}
+```
+
+Now we'll create interactive visualizations for each protocol subset to better understand the characteristics and patterns.
+
+### TCP Protocol Analysis
+
+```{r tcp_visualizations, warning=FALSE, message=FALSE}
+if ("tcp" %in% protocols) {
+  tcp_data <- protocol_data[['tcp']]
+  
+  # 1. Attack Distribution in TCP
+  tcp_attack_dist <- plot_ly(
+    x = ~names(table(tcp_data$class)),
+    y = ~as.numeric(table(tcp_data$class)),
+    type = 'bar',
+    marker = list(color = 'steelblue')
+  ) %>%
+  layout(
+    title = 'Attack Type Distribution in TCP Protocol',
+    xaxis = list(title = 'Attack Type', tickangle = 45),
+    yaxis = list(title = 'Count', type = 'log'),
+    hovermode = 'closest'
+  )
+  
+  # 2. Duration vs Bytes Scatterplot
+  tcp_bytes_plot <- plot_ly(
+    data = tcp_data[sample(1:nrow(tcp_data), min(10000, nrow(tcp_data)))],
+    x = ~src_bytes, 
+    y = ~dst_bytes,
+    color = ~class,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(opacity = 0.7, size = 8)
+  ) %>%
+  layout(
+    title = 'Source vs Destination Bytes by Attack Type (TCP)',
+    xaxis = list(title = 'Source Bytes', type = 'log'),
+    yaxis = list(title = 'Destination Bytes', type = 'log'),
+    legend = list(x = 0.1, y = 0.9)
+  )
+  
+  # 3. Service Distribution
+  tcp_service_counts <- as.data.frame(table(tcp_data$service))
+  tcp_service_counts <- tcp_service_counts[order(tcp_service_counts$Freq, decreasing = TRUE),]
+  tcp_service_counts <- tcp_service_counts[1:min(15, nrow(tcp_service_counts)),]
+  
+  tcp_service_plot <- plot_ly(
+    data = tcp_service_counts,
+    x = ~Var1,
+    y = ~Freq,
+    type = 'bar',
+    marker = list(color = 'orange')
+  ) %>%
+  layout(
+    title = 'Top 15 Services in TCP Protocol',
+    xaxis = list(title = 'Service', tickangle = 45),
+    yaxis = list(title = 'Count', type = 'log'),
+    margin = list(b = 120)
+  )
+  
+  # 4. Error Rate Analysis
+  tcp_error_plot <- plot_ly(
+    data = tcp_data[sample(1:nrow(tcp_data), min(5000, nrow(tcp_data)))],
+    x = ~rerror_rate,
+    y = ~serror_rate,
+    color = ~class,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(size = 8, opacity = 0.7)
+  ) %>%
+  layout(
+    title = 'Error Rate Analysis by Attack Type (TCP)',
+    xaxis = list(title = 'Rerror Rate'),
+    yaxis = list(title = 'Serror Rate'),
+    legend = list(x = 0.1, y = 0.9)
+  )
+  
+  # Display the plots
+  tcp_attack_dist
+  tcp_bytes_plot
+  tcp_service_plot
+  tcp_error_plot
+}
+```
+
+### UDP Protocol Analysis
+
+```{r udp_visualizations, warning=FALSE, message=FALSE}
+if ("udp" %in% protocols) {
+  udp_data <- protocol_data[['udp']]
+  
+  # 1. Attack Distribution in UDP
+  udp_attack_dist <- plot_ly(
+    x = ~names(table(udp_data$class)),
+    y = ~as.numeric(table(udp_data$class)),
+    type = 'bar',
+    marker = list(color = 'forestgreen')
+  ) %>%
+  layout(
+    title = 'Attack Type Distribution in UDP Protocol',
+    xaxis = list(title = 'Attack Type', tickangle = 45),
+    yaxis = list(title = 'Count', type = 'log'),
+    hovermode = 'closest'
+  )
+  
+  # 2. Duration vs Count Analysis
+  udp_duration_plot <- plot_ly(
+    data = udp_data,
+    x = ~duration,
+    y = ~count,
+    color = ~class,
+    type = 'scatter',
+    mode = 'markers',
+    marker = list(size = 10, opacity = 0.7)
+  ) %>%
+  layout(
+    title = 'Duration vs Connection Count by Attack Type (UDP)',
+    xaxis = list(title = 'Duration', type = 'log'),
+    yaxis = list(title = 'Connection Count', type = 'log'),
+    legend = list(x = 0.1, y = 0.9)
+  )
+  
+  # 3. Service Distribution
+  udp_service_counts <- as.data.frame(table(udp_data$service))
+  udp_service_counts <- udp_service_counts[order(udp_service_counts$Freq, decreasing = TRUE),]
+  udp_service_counts <- udp_service_counts[1:min(15, nrow(udp_service_counts)),]
+  
+  udp_service_plot <- plot_ly(
+    data = udp_service_counts,
+    x = ~Var1,
+    y = ~Freq,
+    type = 'bar',
+    marker = list(color = 'purple')
+  ) %>%
+  layout(
+    title = 'Top Services in UDP Protocol',
+    xaxis = list(title = 'Service', tickangle = 45),
+    yaxis = list(title = 'Count', type = 'log'),
+    margin = list(b = 120)
+  )
+  
+  # 4. Bytes Analysis
+  udp_bytes_boxplot <- plot_ly() %>%
+    add_boxplot(
+      data = udp_data, 
+      x = ~class, 
+      y = ~log10(src_bytes + 1),
+      name = 'Source Bytes',
+      boxpoints = 'outliers',
+      jitter = 0.3,
+      marker = list(color = 'blue'),
+      line = list(color = 'blue')
+    ) %>%
+    add_boxplot(
+      data = udp_data, 
+      x = ~class, 
+      y = ~log10(dst_bytes + 1),
+      name = 'Destination Bytes',
+      boxpoints = 'outliers',
+      jitter = 0.3,
+      marker = list(color = 'red'),
+      line = list(color = 'red')
+    ) %>%
+    layout(
+      title = 'Log Source & Destination Bytes by Attack Type (UDP)',
+      xaxis = list(title = 'Attack Type', tickangle = 45),
+      yaxis = list(title = 'Log10(Bytes + 1)'),
+      boxmode = 'group',
+      margin = list(b = 120)
+    )
+  
+  # Display the plots
+  udp_attack_dist
+  udp_duration_plot
+  udp_service_plot
+  udp_bytes_boxplot
+}
+```
+
+### ICMP Protocol Analysis
+
+```{r icmp_visualizations, warning=FALSE, message=FALSE}
+if ("icmp" %in% protocols) {
+  icmp_data <- protocol_data[['icmp']]
+  
+  # 1. Attack Distribution in ICMP
+  icmp_attack_dist <- plot_ly(
+    x = ~names(table(icmp_data$class)),
+    y = ~as.numeric(table(icmp_data$class)),
+    type = 'bar',
+    marker = list(color = 'coral')
+  ) %>%
+  layout(
+    title = 'Attack Type Distribution in ICMP Protocol',
+    xaxis = list(title = 'Attack Type', tickangle = 45),
+    yaxis = list(title = 'Count', type = 'log'),
+    hovermode = 'closest'
+  )
+  
+  # 2. Duration Distribution
+  icmp_duration_hist <- plot_ly(
+    data = icmp_data,
+    x = ~duration,
+    color = ~class,
+    type = 'histogram',
+    opacity = 0.7,
+    nbinsx = 30
+  ) %>%
+  layout(
+    title = 'Duration Distribution by Attack Type (ICMP)',
+    xaxis = list(title = 'Duration'),
+    yaxis = list(title = 'Count'),
+    barmode = 'overlay',
+    legend = list(x = 0.1, y = 0.9)
+  )
+  
+  # 3. Flag Distribution
+  icmp_flag_counts <- as.data.frame(table(icmp_data$flag))
+  
+  icmp_flag_plot <- plot_ly(
+    data = icmp_flag_counts,
+    labels = ~Var1,
+    values = ~Freq,
+    type = 'pie',
+    hole = 0.4,
+    marker = list(colors = RColorBrewer::brewer.pal(min(8, nrow(icmp_flag_counts)), 'Set2'))
+  ) %>%
+  layout(
+    title = 'Flag Distribution in ICMP Protocol',
+    showlegend = TRUE,
+    legend = list(x = 0.1, y = 0.9)
+  )
+  
+  # 4. Feature Correlations Heatmap
+  # Select numeric columns for correlation
+  numeric_cols <- sapply(icmp_data, is.numeric)
+  if (sum(numeric_cols) > 2) {  # Need at least 2 numeric columns
+    # Calculate correlations
+    icmp_cor <- cor(icmp_data[, numeric_cols], use = 'pairwise.complete.obs')
+    # Get top correlating features (absolute value)
+    abs_cor <- abs(icmp_cor)
+    diag(abs_cor) <- 0  # Remove self-correlations
+    # Get top N features
+    n_top <- min(10, sum(numeric_cols))
+    top_indices <- which(abs_cor > sort(abs_cor, decreasing = TRUE)[n_top^2], arr.ind = TRUE)
+    top_features <- unique(c(row.names(icmp_cor)[top_indices[,1]], 
+                            colnames(icmp_cor)[top_indices[,2]]))
+    
+    # Filter correlation matrix to top features
+    icmp_cor_filtered <- icmp_cor[top_features, top_features]
+    
+    # Convert to long format for plotly
+    cor_data <- expand.grid(x = colnames(icmp_cor_filtered), y = rownames(icmp_cor_filtered))
+    cor_data$correlation <- as.vector(icmp_cor_filtered)
+    
+    icmp_heatmap <- plot_ly(
+      data = cor_data,
+      x = ~x,
+      y = ~y,
+      z = ~correlation,
+      type = 'heatmap',
+      colorscale = 'RdBu',
+      zmin = -1,
+      zmax = 1
+    ) %>%
+    layout(
+      title = 'Feature Correlation Heatmap (ICMP)',
+      xaxis = list(title = '', tickangle = 45),
+      yaxis = list(title = ''),
+      margin = list(l = 120, b = 120)
+    )
+    
+    # Display the heatmap
+    icmp_heatmap
+  }
+  
+  # Display other plots
+  icmp_attack_dist
+  icmp_duration_hist
+  icmp_flag_plot
+}
+```
+
+### Cross-Protocol Comparison
+
+```{r cross_protocol_viz, warning=FALSE, message=FALSE}
+# 1. Attack type distribution across protocols
+attack_by_protocol <- data.frame(Protocol=character(), AttackType=character(), Count=numeric(), stringsAsFactors=FALSE)
+
+for (protocol in protocols) {
+  proto_data <- protocol_data[[protocol]]
+  class_counts <- table(proto_data$class)
+  
+  # Filter out any empty class values
+  valid_classes <- names(class_counts)[names(class_counts) != ""]
+  class_counts <- class_counts[valid_classes]
+  
+  for (cls in names(class_counts)) {
+    if (!is.na(cls) && cls != "") {  # Skip NA or empty class names
+      attack_by_protocol <- rbind(
+        attack_by_protocol,
+        data.frame(
+          Protocol = protocol,
+          AttackType = cls,
+          Count = class_counts[cls],
+          stringsAsFactors = FALSE
+        )
+      )
+    }
+  }
+}
+
+# Create the stacked bar chart
+protocol_attack_dist <- plot_ly(
+  data = attack_by_protocol,
+  x = ~Protocol,
+  y = ~Count,
+  color = ~AttackType,
+  type = 'bar'
+) %>%
+layout(
+  title = 'Attack Type Distribution Across Protocols',
+  xaxis = list(title = 'Protocol'),
+  yaxis = list(title = 'Count', type = 'log'),
+  barmode = 'stack',
+  legend = list(x = 0.7, y = 0.9)
+)
+
+# 2. Feature comparison across protocols
+# Sample a smaller subset for visualization
+sample_size_per_protocol <- 5000
+
+protocol_samples <- data.frame()
+for (protocol in protocols) {
+  proto_data <- protocol_data[[protocol]]
+  # Sample from each protocol
+  n_to_sample <- min(sample_size_per_protocol, nrow(proto_data))
+  sampled_rows <- proto_data[sample(1:nrow(proto_data), n_to_sample),]
+  sampled_rows$Protocol <- protocol  # Add protocol identifier
+  protocol_samples <- rbind(protocol_samples, sampled_rows)
+}
+
+# Create 3D scatter plot comparing key features
+feature_3d <- plot_ly(
+  data = protocol_samples,
+  x = ~src_bytes,
+  y = ~dst_bytes,
+  z = ~duration,
+  color = ~Protocol,
+  symbol = ~Protocol,
+  type = 'scatter3d',
+  mode = 'markers',
+  marker = list(size = 3, opacity = 0.7)
+) %>%
+layout(
+  title = '3D Comparison of Key Features Across Protocols',
+  scene = list(
+    xaxis = list(title = 'Source Bytes', type = 'log'),
+    yaxis = list(title = 'Destination Bytes', type = 'log'),
+    zaxis = list(title = 'Duration', type = 'log')
+  )
+)
+
+# 3. Connection metrics comparison
+metrics_boxplot <- plot_ly() %>%
+  add_boxplot(
+    data = protocol_samples[protocol_samples$Protocol == protocols[1],],
+    y = ~same_srv_rate,
+    name = protocols[1],
+    boxpoints = 'outliers',
+    jitter = 0.3,
+    marker = list(color = 'blue'),
+    line = list(color = 'blue'),
+    x = 'Same Service Rate'
+  )
+
+# Add other protocols
+if (length(protocols) > 1) {
+  for (i in 2:length(protocols)) {
+    metrics_boxplot <- metrics_boxplot %>%
+      add_boxplot(
+        data = protocol_samples[protocol_samples$Protocol == protocols[i],],
+        y = ~same_srv_rate,
+        name = protocols[i],
+        boxpoints = 'outliers',
+        jitter = 0.3,
+        marker = list(color = RColorBrewer::brewer.pal(length(protocols), 'Set1')[i]),
+        line = list(color = RColorBrewer::brewer.pal(length(protocols), 'Set1')[i]),
+        x = 'Same Service Rate'
+      )
+  }
+}
+
+metrics_boxplot <- metrics_boxplot %>%
+  layout(
+    title = 'Comparison of Same Service Rate Across Protocols',
+    yaxis = list(title = 'Rate Value'),
+    boxmode = 'group'
+  )
+
+# Display cross-protocol visualizations
+protocol_attack_dist
+feature_3d
+metrics_boxplot
+```
+
+```{r}
+
+```
+
+### Key Insights from Protocol-Based Analysis
+
+The protocol-based analysis reveals distinct patterns across TCP, UDP, and ICMP traffic:
+
+1. **TCP Protocol**:
+   - Hosts the widest variety of attack types
+   - Shows distinctive error rate patterns for different attacks
+   - Service distribution is highly diverse
+
+2. **UDP Protocol**:
+   - More limited range of attack types
+   - Different byte transfer patterns than TCP
+   - Shorter connection durations on average
+
+3. **ICMP Protocol**:
+   - Primarily used for specific attacks like smurf and pod
+   - Very distinctive duration patterns
+   - Less variability in flag types
+
+These visualizations help identify protocol-specific vulnerabilities and attack signatures, potentially improving our model's ability to detect intrusions in different network contexts.
