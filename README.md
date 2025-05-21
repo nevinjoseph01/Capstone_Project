@@ -14,11 +14,9 @@
 | Research Objectives  confirmation |  1   | All participation needed   |
 | “protocol_type == 1” to be deleted because fuck it   | 2   | Hesh's task   |
 | “protocol_type ==    ” change the name to “b’Other’”   | 2   | Hesh's task   |
-| Removing classes and cleaning up the mess | 1 | Nev's task   |
 | Feature selection and scaling   | 2   | Midani's task   |
 | Structure plan  |  1   | tasks coordination   |
-| Stuff 3   |  10   |  NA  |
-| Stuff 4   |  10  |  NA  |
+
 
 
 ## Questions:
