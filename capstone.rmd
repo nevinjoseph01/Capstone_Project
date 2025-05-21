@@ -66,7 +66,7 @@ data <- fread("data.csv")
 
 ```{r}
 str(data)
-View(data)
+#View(data)
 
 
 ```
@@ -176,7 +176,7 @@ Handling missing char/factor values:
 ```{r}
 # Count empty cells in each column
 empty_cells <- sapply(data, function(x) sum(x == ""))
-View(as.data.frame(empty_cells))
+#View(as.data.frame(empty_cells))
 ```
 
 
