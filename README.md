@@ -50,3 +50,12 @@
 + features are renamed properly
 + outliers_less var created (nrow: 173877 after duplicates removable)
 
+## Group Members & Contributions
+
+| Name            | Contributions                           |
+|-----------------|-----------------------------------------|
+| Abed Midani     | Data understanding and Preperation, Preprocessing (NA,Outlier,Imputing ect.), Documentation, ... |
+| Nevin Joseph    | Data understanding (also refering to research paper), Handling class imbalance (data leakage), Creation & Evaluation of Machine Learning Models|
+| Heshan Raj      | Research questions, sleeping     |
+
+
