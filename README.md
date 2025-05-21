@@ -10,38 +10,37 @@
 ## To do list:
 | 2-do | importance | details |
 | -------- | -------- | -------- |
-| Research question   |  1   | All participation needed   |
-| Research Objectives   |  1   | All participation needed   |
-| Presentation   |  3   | Any takers?   |
+| Research questions confirmation  |  1   | All participation needed   |
+| Research Objectives  confirmation |  1   | All participation needed   |
+| “protocol_type == 1” to be deleted because fuck it   | 2   | Hesh's task   |
+| “protocol_type ==    ” change the name to “b’Other’”   | 2   | Hesh's task   |
+| Removing classes and cleaning up the mess | 1 | Nev's task   |
+| Feature selection and scaling   | 2   | Midani's task   |
 | Structure plan  |  1   | tasks coordination   |
-| More PREPROCESSING steps   | 2   | Midani's task   |
 | Stuff 3   |  10   |  NA  |
 | Stuff 4   |  10  |  NA  |
 
 
 ## Questions:
-+ how/what 2 visualize such a vast dataset?
-+ will there be extra classification/clustering needed for category prediction (as per peer review paper)?
-+ regarding NAs, if the Class (targrt variable) is missing, can the sample be useful or should I delete each sample for with missing Class?
-+ outliers removal or winsorizing?
-+ if we shuffle for computational convenience, would it make it harder for us to visualize the data?
++ how to use azure to visualize our data and/or manipulate it futher?
++ confirming certainty to keep outliers?
 + the difference between the columns is vast. Does Standardization count for scaling all 42 various features separately? 
-+ what if our feature selection remains unclear, and the var names are not understandable, and the figure representation of the feature is vague? Wagwan then?
+
+
 
 ## Potential research Questions:
-+ Are certain types of network traffic more commonly associated with anomalies or attacks? Exploring protocol, service, and flag distributions in relation to anomalies.
-
-+ How do normal and anomalous connections differ in terms of volume and duration? Comparing bytes sent/received and connection times.
-
-+ Do specific connection behaviors appear more frequently in anomalies? Looking at patterns like repeated login attempts or unusual connection flags.
-
-+ Are there patterns in how network activity builds up before an anomaly occurs? Investigating features like connection count or repeated service usage.
-
-+ Do host-based behaviors show early signs of risky or unusual activity? Analyzing metrics like access rate, host diversity, or repeated service targeting.
-
-+ Can we identify distinct behavior profiles associated with different types of anomalies? Looking for clusters or patterns that map to known threat categories.
-
-+ Are there silent or low-visibility behaviors that still represent a high level of risk? Studying low-volume, low-activity traffic that results in serious anomalies.
++ How effectively can network traffic anomalies be detected using only protocol metadata?
+. Focus on protocol_type, service, and flag features
+. Evaluate different feature combinations
+. Compare with full feature set performance
++ What are the unique behavioral patterns that distinguish different attack types from normal traffic?
+. Analyze feature importance per attack type
+. Create profile visualizations for each attack class
+. Identify minimum feature sets needed to detect each attack type
++ How does the predictive performance of statistical features compare to categorical network attributes in identifying specific attack vectors?
+. Compare models using only numeric vs only categorical features
+. Evaluate performance on specific attack types
+. Analyze feature importance within each category
 
 
 ## Already done:
@@ -50,4 +49,13 @@
 + missing values imputed with median 
 + features are renamed properly
 + outliers_less var created (nrow: 173877 after duplicates removable)
+
+## Group Members & Contributions
+
+| Name            | Contributions                           |
+|-----------------|-----------------------------------------|
+| Abed Midani     | Data understanding and Preperation, Preprocessing (NA,Outlier,Imputing ect.), Documentation, ... |
+| Nevin Joseph    | Data understanding (also refering to research paper), Handling class imbalance (data leakage), Creation & Evaluation of Machine Learning Models|
+| Heshan Raj      | Research questions, sleeping     |
+
 
