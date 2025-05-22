@@ -86,9 +86,11 @@ colnames(data)[1:42] <- c(
 )
 
 ```
+### Checking for class imbalance
 ```{r}
 as.data.frame(table(data$class))
 ```
+We can obviously identify multiple classes with relatively significantly low frequency.
 
 ```{r}
 # Remove all classes with frequency <= 54
@@ -252,33 +254,68 @@ cat("Number of unique service values:", length(unique(data$service)))
 cat("Number of unique protocol_type values:", length(unique(data$protocol_type)))
 ```
 
-
+# Number of unique values for each feature:
 
 ```{r}
 # Create a table of unique values for each feature
+#unique_values <- sapply(data, function(x) length(unique(x)))
+#unique_values_df <- data.frame(
+#  Feature = names(unique_values),
+#  Unique_Values = unique_values)
+
+## Sort by number of unique values
+#unique_values_df <- unique_values_df[order(-unique_values_df$Unique_Values), ]
+
+
+library(knitr) # Make sure this library is loaded
+
 unique_values <- sapply(data, function(x) length(unique(x)))
 unique_values_df <- data.frame(
   Feature = names(unique_values),
-  Unique_Values = unique_values)
+  Unique_Values = unique_values
+)
 
 # Sort by number of unique values
 unique_values_df <- unique_values_df[order(-unique_values_df$Unique_Values), ]
+
+# Use kable to print a nice table, suppressing row names
+kable(unique_values_df,
+      caption = "Number of Unique Values for Each Feature",
+      align = c("l", "c"), # Left-align Feature, Center-align Unique_Values
+      row.names = FALSE     # <--- This is the key!
+)
 ```
-Number of unique values for each feature:
+This shows us that some categorical features have limited unique values which could help us subset the data.
+
 ```{r}
-print(unique_values_df)
+#print(unique_values_df)
 # View in a more readable format
 #View(unique_values_df)
 ```
 
+
 ## Normal connections
 ```{r}
-normal_connections <- data[data$class == "normal", ]
+normal_connections <- data[data$class == "b'normal.'", ]
 
 cat("Number of normal connections:", nrow(normal_connections))
 ```
+There seems to be ~9.5K non-malicious connections in the dataset. This could be considered for further sub-setting.
+
 
 ## Handling Class Imbalance
+
+#### Before balancing:
+```{r}
+before_plot <- ggplot(as.data.frame(table(data$class)), aes(x = reorder(Var1, -Freq), y = Freq)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  labs(title = "Class Distribution Before Balancing",
+       x = "Class", y = "Frequency")
+```
+
+
 ```{r}
 # Set a balanced target for each class
 target_samples <- 2000  # We'll aim for 2000 samples per class
@@ -302,8 +339,10 @@ for (cls in unique(data$class[data$class != ""])) {
     balanced_data <- rbind(balanced_data, class_data)
   }
 }
+```
 
-# Now handle the minority classes using SMOTE
+### Now handling the minority classes using SMOTE
+```{r}
 # First convert to data.frame (SMOTE functions expect data.frames)
 balanced_df <- as.data.frame(balanced_data)
 
@@ -391,9 +430,18 @@ for (col in factor_cols) {
   balanced_df[[col]] <- factor(balanced_df[[col]], levels = 1:length(factor_levels[[col]]), 
                               labels = factor_levels[[col]])
 }
+```
 
+
+```{r}
 # Convert back to data.table
 balanced_data <- as.data.table(balanced_df)
+
+# remove empty class "":
+balanced_data <- balanced_data[!(class == "")]
+balanced_data <- balanced_data[!(class == " ")]
+balanced_data <- balanced_data[!(class == "V1")]
+
 
 # Check the new class distribution
 print("Balanced class distribution:")
@@ -444,6 +492,9 @@ cat("Balanced dataset size (simple approach):", nrow(balanced_data_simple), "\n"
 balanced_data <- balanced_data_simple
 ```
 
+
+```{r}
+"
 Before Balancing:
 
               Var1   Freq
@@ -476,18 +527,12 @@ After Balancing:
 9        b'satan.' 2000
 10       b'smurf.' 2000
 11    b'teardrop.' 2000
-12 b'warezclient.' 2000
+12 b'warezclient.' 2000"
+```
+
 
 
 ```{r}
-# Before balancing
-before_plot <- ggplot(as.data.frame(table(data$class)), aes(x = reorder(Var1, -Freq), y = Freq)) +
-  geom_bar(stat = "identity", fill = "steelblue") +
-  theme_minimal() +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-  labs(title = "Class Distribution Before Balancing",
-       x = "Class", y = "Frequency")
-
 # After balancing
 after_plot <- ggplot(balanced_class_table_simple, aes(x = reorder(Var1, -Freq), y = Freq)) +
   geom_bar(stat = "identity", fill = "forestgreen") +
@@ -514,30 +559,49 @@ train_index <- createDataPartition(data$class, p = 0.7, list = FALSE)
 train_data <- data[train_index]
 test_data <- data[-train_index]
 
+# Adding explicit empty class removal after splitting
+train_data <- train_data[train_data$class != '']
+test_data <- test_data[test_data$class != '']
+
 # ------------------------------
 # Step 2: Apply your balancing code to train_data
 # ------------------------------
+# IMPORTANT: We only balance the training data, not the test data
+# This ensures our model evaluation is performed on a realistic, unbalanced distribution
+
 # Set a balanced target for each class
 target_samples <- 2000  # We'll aim for 2000 samples per class
 
 # Create a balanced dataset using both undersampling and oversampling (simpler path)
 balanced_data_simple <- data.table()
 
-set.seed(123)  # For reproducibility
+# Document preprocessing steps for consistency
+cat("\nPreprocessing consistency check:\n")
+cat("- Train data rows before balancing:", nrow(train_data), "\n")
+cat("- Test data rows:", nrow(test_data), "\n")
 
+# Iterate through each class and balance
+cat("\nBalancing classes in training data only:\n")
 for (cls in unique(train_data$class[train_data$class != ""])) {
   class_data <- train_data[class == cls]
-  n_samples <- nrow(class_data)
+  class_size <- nrow(class_data)
+  cat("- Class '", cls, "': ", class_size, " samples", sep="")
   
-  if (n_samples > target_samples) {
-    sampled_indices <- sample(1:n_samples, target_samples)
-    balanced_class_data <- class_data[sampled_indices]
+  if (class_size > target_samples) {
+    # Undersample for large classes
+    set.seed(42)  # Ensure reproducibility
+    balanced_class_data <- class_data[sample(.N, target_samples)]
+    cat(" → undersampled to ", target_samples, " samples\n", sep="")
     balanced_data_simple <- rbind(balanced_data_simple, balanced_class_data)
-  } else if (n_samples > 0 && n_samples < target_samples) {
-    oversampled_indices <- sample(1:n_samples, target_samples, replace = TRUE)
-    balanced_class_data <- class_data[oversampled_indices]
+  } else if (class_size < target_samples) {
+    # Oversample for small classes
+    set.seed(42)  # Ensure reproducibility
+    balanced_class_data <- class_data[sample(.N, target_samples, replace = TRUE)]
+    cat(" → oversampled to ", target_samples, " samples\n", sep="")
     balanced_data_simple <- rbind(balanced_data_simple, balanced_class_data)
-  } else if (n_samples == target_samples) {
+  } else {
+    # Class already at target size
+    cat(" → already at target size\n")
     balanced_data_simple <- rbind(balanced_data_simple, class_data)
   }
 }
@@ -563,9 +627,10 @@ table(data$protocol_type)
 
 
 
-### Replace empty protocol_type with b'unknown':
+### Replacing empty protocol_type with b'unknown':
 ```{r, warning=F}
 balanced_data$protocol_type[is.na(balanced_data$protocol_type)] <- "b'unknown'"
+table(balanced_data$protocol_type)
 ```
 
 
@@ -623,7 +688,7 @@ importance_plot
 importance_threshold <- 400
 selected_features_threshold <- as.character(imp_df$Feature[imp_df$Importance > importance_threshold])
 cat("\nFeatures with importance > ", importance_threshold, ":\n")
-print(selected_features_threshold)
+cat("Selected Features:\n",selected_features_threshold)
 
 
 selected_features <- selected_features_threshold
@@ -672,13 +737,39 @@ model_rf <- ranger(
 # ------------------------------
 # Evaluate on test set
 # ------------------------------
+# Make sure both datasets have the same factor levels before prediction
+# This ensures prediction classes match the training data classes
+cat("Checking for empty classes in test data before prediction:\n")
+cat("Any empty class values?", any(test_data$class == ""), "\n")
+
+# Ensure class is a factor with the same levels in both datasets
+all_classes <- unique(c(levels(balanced_data$class), levels(test_data$class)))
+all_classes <- all_classes[all_classes != ""]
+
+# Convert to factor with consistent levels
+balanced_data$class <- factor(balanced_data$class, levels = all_classes)
+test_data$class <- factor(test_data$class, levels = all_classes)
+
+# Verify factor levels before prediction
+cat("\nTraining data class levels:\n")
+print(levels(balanced_data$class))
+cat("\nTest data class levels:\n")
+print(levels(test_data$class))
+
+# Now make predictions with consistent class factors
 pred_rf <- predict(model_rf, data = test_data)
 predictions <- pred_rf$predictions
 
+# Ensure predictions are factors with the same levels as the test data
+predictions <- factor(predictions, levels = levels(test_data$class))
+
+# Create confusion matrix with proper factor levels
 conf_matrix <- table(Predicted = predictions, Actual = test_data$class)
 print("Confusion Matrix:")
-#print(conf_matrix)
+
+# Convert to data frame for kable, ensuring no empty classes are included
 conf_matrix_df <- as.data.frame.matrix(conf_matrix)
+
 # Print using kable
 kable(conf_matrix_df,
       caption = "Confusion Matrix",
