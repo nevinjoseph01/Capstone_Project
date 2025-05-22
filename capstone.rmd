@@ -71,6 +71,8 @@ str(data)
 
 ```
 
+### Renaming columns according to the dataset description
+
 ```{r}
 colnames(data)[1:42] <- c(
   "duration", "protocol_type", "service", "flag", "src_bytes", "dst_bytes",
@@ -102,27 +104,41 @@ cat("is there any missing values? ", any(is.na(data))) #
 ```
 Features with missing values:
 ```{r}
-colSums(is.na(data)) #
+#colSums(is.na(data)) #
+library(knitr)
+
+# Get the NA counts as a named vector
+na_vector <- colSums(is.na(data))
+
+# Convert to a data frame for kable()
+na_df <- data.frame(Variable = names(na_vector), NA_Count = as.numeric(na_vector))
+
+# Optional: Sort by NA_Count
+na_df <- na_df[order(-na_df$NA_Count), ]
+
+# Use kable to print a nice table
+kable(na_df, caption = "Missing Values per Column")
 ```
 
 ```{r}
 cat("Number of complete cases:", sum(complete.cases(data)))
 # 22469
-cat("Number of rows:", nrow(data))
+#cat("Number of rows:", nrow(data))
 # 528603
 
 ```
 
-
+### Checking for duplicates:
 ```{r}
-# checking for duplicates:
+
 #sum(duplicated(data)) # 128935
 #nrow(data) - sum(duplicated(data))# 399668
 #remove duplicates
 data <- data[!duplicated(data), ]
 
 ```
-
+Number of duplicated samples: 128935
+Number of samples after removing duplicates: 399668
 
 ```{r}
 data$class <- as.factor(data$class)
