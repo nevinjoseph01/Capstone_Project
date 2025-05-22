@@ -621,16 +621,44 @@ print(as.data.frame(table(test_data$class)))
 
 ### Protocol distribution
 ```{r}
-#table(balanced_data$protocol_type)
-table(data$protocol_type)
+# Check the current protocol distribution
+cat("Protocol distribution before fixing unnamed labels:\n")
+print(table(balanced_data$protocol_type))
+
+# Check for unnamed or empty protocol types
+cat("\nChecking for unnamed protocol types:\n")
+cat("- Empty strings:", sum(balanced_data$protocol_type == ""), "\n")
+cat("- NA values:", sum(is.na(balanced_data$protocol_type)), "\n")
+cat("- Blank spaces:", sum(balanced_data$protocol_type == " "), "\n")
+
+# Get the levels of the factor to see if there's an unnamed level
+proto_levels <- levels(balanced_data$protocol_type)
+cat("\nProtocol type levels:\n")
+print(proto_levels)
 ```
 
-
-
-### Replacing empty protocol_type with b'unknown':
+### Replacing unnamed protocol_type with b'unknown':
 ```{r, warning=F}
+# Convert to character first to handle factor levels properly
+balanced_data$protocol_type <- as.character(balanced_data$protocol_type)
+
+# Replace NA values
 balanced_data$protocol_type[is.na(balanced_data$protocol_type)] <- "b'unknown'"
-table(balanced_data$protocol_type)
+
+# Replace empty strings
+balanced_data$protocol_type[balanced_data$protocol_type == ""] <- "b'unknown'"
+
+# Replace unnamed level (if the first level is unnamed)
+if (length(proto_levels) > 0 && proto_levels[1] == "") {
+  balanced_data$protocol_type[balanced_data$protocol_type == proto_levels[1]] <- "b'unknown'"
+}
+
+# Convert back to factor
+balanced_data$protocol_type <- as.factor(balanced_data$protocol_type)
+
+# Check the updated distribution
+cat("Protocol distribution after fixing unnamed labels:\n")
+print(table(balanced_data$protocol_type))
 ```
 
 
@@ -895,7 +923,91 @@ for (protocol in protocols) {
     cat("Protocol", protocol, "has no samples, skipping...\n")
   }
 }
+```
 
+```{r}
+# Load required libraries
+library(ggplot2)
+library(plotly)
+library(dplyr)
+library(reshape2)
+
+# Create the data from your R output
+tcp_data <- data.frame(
+  class = c("back", "ipsweep", "neptune", "nmap", "normal", "portsweep", "satan", "warezclient"),
+  count = c(1982, 84, 96467, 93, 69546, 905, 1281, 916),
+  protocol = "TCP"
+)
+
+udp_data <- data.frame(
+  class = c("nmap", "normal", "satan", "teardrop"),
+  count = c(20, 17272, 149, 882),
+  protocol = "UDP"
+)
+
+icmp_data <- data.frame(
+  class = c("ipsweep", "nmap", "normal", "pod", "portsweep", "satan", "smurf"),
+  count = c(1039, 96, 1156, 230, 1, 3, 138417),
+  protocol = "ICMP"
+)
+
+
+all_data <- rbind(tcp_data, udp_data, icmp_data)
+all_classes <- unique(all_data$class)
+complete_data <- expand.grid(class = all_classes, protocol = c("TCP", "UDP", "ICMP"))
+complete_data <- merge(complete_data, all_data, by = c("class", "protocol"), all.x = TRUE)
+
+# ============================================================
+# OPTION 3: Side-by-side overlapping bars (if you prefer this style)
+# ============================================================
+
+# Plot with overlapping bars (using position = "identity")
+overlapping_plot <- ggplot(complete_data, aes(x = class, y = count, fill = protocol)) +
+  geom_bar(stat = "identity", position = "identity", alpha = 0.6) +
+  scale_fill_manual(values = c("TCP" = "#3498db", "UDP" = "#2ecc71", "ICMP" = "#f39c12")) +
+  labs(title = "Network Protocol Attack Class Distribution - Overlapping Bars",
+       x = "Attack Class",
+       y = "Count",
+       fill = "Protocol") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_y_continuous(labels = scales::comma)
+
+overlapping_interactive <- ggplotly(overlapping_plot, tooltip = c("fill", "x", "y"))
+overlapping_interactive
+
+# ============================================================
+# OPTION 4: Log scale version (useful given the large range in values)
+# ============================================================
+
+# Log scale version for better visualization of smaller values
+log_plot <- ggplot(complete_data[complete_data$count > 0,], aes(x = class, y = count, fill = protocol)) +
+  geom_bar(stat = "identity", position = "dodge", alpha = 0.8) +
+  scale_fill_manual(values = c("TCP" = "#3498db", "UDP" = "#2ecc71", "ICMP" = "#f39c12")) +
+  scale_y_log10(labels = scales::comma) +
+  labs(title = "Network Protocol Attack Class Distribution - Log Scale",
+       x = "Attack Class",
+       y = "Count (Log Scale)",
+       fill = "Protocol") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+log_interactive <- ggplotly(log_plot, tooltip = c("fill", "x", "y"))
+log_interactive
+
+```
+### Key Observations:
+##### TCP Protocol:
+Dominated by Neptune attacks (96,467) and normal traffic (69,546)
+
+##### UDP Protocol:
+Mostly normal traffic (17,272) with some teardrop attacks (882)
+
+##### ICMP Protocol:
+Heavily dominated by Smurf attacks (138,417)
+
+
+```{r}
 # Summary of class distribution by protocol
 for (protocol in names(protocol_data)) {
   if (nrow(protocol_data[[protocol]]) > 0) {
@@ -1686,6 +1798,75 @@ if (length(names(protocol_data)) > 0) {
 } else {
   cat("No protocol data available for cross-protocol comparison.\n")
 }
+```
+Mean Duration by Protocol: Shows that ICMP has significantly longer duration than TCP and UDP, which is expected since ICMP is often used for ping operations that wait for responses.
+Mean src_bytes by Protocol: TCP traffic contains much larger source bytes compared to ICMP and UDP, indicating TCP connections typically transfer more data from client to server.
+Mean dst_bytes by Protocol: TCP also dominates in destination bytes, showing TCP connections have substantial two-way data transfer, which aligns with TCP's connection-oriented nature.
+Mean count by Protocol: UDP appears to have the highest connection count, suggesting more repeated connections, which is consistent with UDP's stateless nature.
+
+## Additional Protocol-Based Analysis
+
+```{r, message=FALSE, warning=FALSE}
+# Source the additional protocol analysis functions
+source("additional_protocol_analysis.R")
+```
+
+### 1. Attack Type Distribution by Protocol
+
+This visualization shows how different attack types are distributed across protocols, helping us understand which protocols are more susceptible to specific attacks.
+
+```{r attack_by_protocol_plot, fig.width=10, fig.height=6, message=FALSE, warning=FALSE}
+# Create attack type distribution plot
+attack_plot <- create_attack_by_protocol_plot(balanced_data)
+print(attack_plot)
+```
+
+### 2. Feature Importance by Protocol
+
+This analysis reveals which features are most important for detecting attacks in each protocol, addressing our research question about protocol-specific feature importance.
+
+```{r feature_importance_by_protocol, fig.width=10, fig.height=8, message=FALSE, warning=FALSE}
+# Create feature importance by protocol plot
+tryCatch({
+  importance_plot <- create_feature_importance_by_protocol(balanced_data, ranger)
+  print(importance_plot)
+}, error = function(e) {
+  cat("Error in feature importance calculation:", e$message, "\n")
+  cat("This may be due to factor level issues or insufficient data for some protocols.\n")
+})
+```
+
+### 3. Service Distribution by Protocol
+
+This visualization shows which services are most commonly used within each protocol, helping identify protocol-specific service vulnerabilities.
+
+```{r service_by_protocol, fig.width=10, fig.height=6, message=FALSE, warning=FALSE}
+# Create service distribution by protocol plot
+tryCatch({
+  service_plot <- create_service_by_protocol(balanced_data)
+  print(service_plot)
+}, error = function(e) {
+  cat("Error in service distribution calculation:", e$message, "\n")
+  cat("This may be due to missing service information for some protocols.\n")
+})
+```
+
+### 4. Attack Success Rate by Protocol
+
+This analysis examines which protocols have higher rates of successful attacks, providing insights into protocol security vulnerabilities.
+
+```{r attack_success_by_protocol, fig.width=10, fig.height=6, message=FALSE, warning=FALSE}
+# Create attack success rate by protocol plot
+tryCatch({
+  success_plot <- create_attack_success_by_protocol(balanced_data)
+  if (!is.null(success_plot)) {
+    print(success_plot)
+  } else {
+    cat("Insufficient data to calculate attack success rates by protocol.\n")
+  }
+}, error = function(e) {
+  cat("Error in attack success rate calculation:", e$message, "\n")
+})
 ```
 
 ### Key Insights from Protocol-Based Analysis
