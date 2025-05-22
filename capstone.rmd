@@ -23,7 +23,6 @@ output:
 + Protocol-Specific Analysis: "How do attack patterns and detection accuracy differ across various network protocols (TCP, UDP, ICMP)?"
 + Feature Importance Analysis: "Which network traffic features are most predictive of specific attack types, and does this vary by protocol?"
 + Imbalance Handling Comparison: "How do different class balancing techniques affect the model's ability to detect rare attack types?"
-+ Anomaly Detection Focus: "Can unsupervised anomaly detection techniques effectively identify novel attack patterns not present in training data?"
 
 
 ```{r setup, include=FALSE}
@@ -559,21 +558,20 @@ print(as.data.frame(table(test_data$class)))
 ### Protocol distribution
 ```{r}
 #table(balanced_data$protocol_type)
-#table(data$protocol_type)
+table(data$protocol_type)
 ```
 
-         b'icmp'  b'tcp'  b'udp' 
-  1923    6172    11385   2520 
+
 
 ### Replace empty protocol_type with b'unknown':
-```{r}
+```{r, warning=F}
 balanced_data$protocol_type[is.na(balanced_data$protocol_type)] <- "b'unknown'"
 ```
 
 
 
 ## Feature importance
-```{r}
+```{r, warning=FALSE}
 # Create a copy of the balanced data
 feature_selection_data <- copy(balanced_data)
 
@@ -612,9 +610,9 @@ importance_plot <- plot_ly(data = imp_df,
 importance_plot
 ```
 
+## Implementing feature selection based on importance
 ```{r}
 ## Feature Selection Implementation ----
-print("Implementing feature selection based on importance")
 
 # Get feature names in order of importance (already in imp_df)
 
@@ -679,11 +677,22 @@ predictions <- pred_rf$predictions
 
 conf_matrix <- table(Predicted = predictions, Actual = test_data$class)
 print("Confusion Matrix:")
-print(conf_matrix)
+#print(conf_matrix)
+conf_matrix_df <- as.data.frame.matrix(conf_matrix)
+# Print using kable
+kable(conf_matrix_df,
+      caption = "Confusion Matrix",
+      align = "c", # Center-align columns for better readability
+      row.names = TRUE # Ensure row names (your 'Predicted' categories) are displayed
+      )
 
 accuracy <- sum(diag(conf_matrix)) / sum(conf_matrix)
 print(paste("Overall Accuracy:", round(accuracy, 4)))
+```
 
+### Per-class metrics
+
+```{r}
 # ------------------------------
 # Per-class metrics
 # ------------------------------
